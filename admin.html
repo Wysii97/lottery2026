@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>後台管理 — 尾牙抽獎系統</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #8B0000;
+      --primary-light: #C41E3A;
+      --gold: #FFD700;
+      --bg-light: #FFF8F0;
+      --success: #2E7D32;
+      --danger: #C62828;
+      --warning: #F57F17;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Noto Sans TC', sans-serif; background: #f5f5f5; color: #333; }
+
+    /* ─── Login ─── */
+    #loginScreen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; background: var(--bg-light);
+    }
+    .login-box {
+      background: #fff; padding: 2.5rem; border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.12); text-align: center; width: 320px;
+    }
+    .login-box h1 { color: var(--primary); font-size: 1.5rem; margin-bottom: .5rem; }
+    .login-box p { color: #666; font-size: .9rem; margin-bottom: 1.5rem; }
+    .login-box input {
+      width: 100%; padding: .75rem; border: 1px solid #ddd; border-radius: 8px;
+      font-size: 1rem; margin-bottom: 1rem; text-align: center; letter-spacing: .2em;
+    }
+    .login-box button {
+      width: 100%; padding: .75rem; background: var(--primary); color: #fff;
+      border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: 700;
+    }
+    .login-box button:hover { background: var(--primary-light); }
+    #loginError { color: var(--danger); font-size: .9rem; margin-top: .75rem; }
+
+    /* ─── Header ─── */
+    #app { display: none; }
+    header {
+      background: var(--primary); color: #fff;
+      padding: .75rem 1.5rem; display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { font-size: 1.1rem; }
+    header button {
+      background: rgba(255,255,255,.2); color: #fff; border: 1px solid rgba(255,255,255,.4);
+      padding: .4rem .9rem; border-radius: 6px; cursor: pointer; font-size: .85rem;
+    }
+
+    /* ─── Tabs ─── */
+    .tabs { display: flex; background: #fff; border-bottom: 2px solid #eee; }
+    .tab-btn {
+      padding: .85rem 1.5rem; border: none; background: none; cursor: pointer;
+      font-size: .95rem; font-family: inherit; color: #666; border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+    }
+    .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; }
+
+    /* ─── Content ─── */
+    .tab-content { display: none; padding: 1.5rem; }
+    .tab-content.active { display: block; }
+
+    /* ─── Stats bar ─── */
+    .stats { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .stat-card {
+      background: #fff; padding: 1rem 1.5rem; border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06); text-align: center; min-width: 120px;
+    }
+    .stat-card .num { font-size: 2rem; font-weight: 900; color: var(--primary); }
+    .stat-card .label { font-size: .8rem; color: #666; margin-top: .2rem; }
+
+    /* ─── Forms & Buttons ─── */
+    .form-row { display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
+    .form-group { display: flex; flex-direction: column; gap: .3rem; }
+    .form-group label { font-size: .85rem; color: #555; }
+    .form-group input, .form-group select {
+      padding: .6rem .75rem; border: 1px solid #ddd; border-radius: 6px;
+      font-size: .95rem; font-family: inherit;
+    }
+    .btn {
+      padding: .6rem 1.1rem; border: none; border-radius: 6px; cursor: pointer;
+      font-size: .9rem; font-family: inherit; font-weight: 700;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-light); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: #b71c1c; }
+    .btn-warning { background: var(--warning); color: #fff; }
+    .btn-warning:hover { background: #e65100; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #1b5e20; }
+    .btn-sm { padding: .3rem .65rem; font-size: .8rem; }
+    .btn-outline {
+      background: #fff; border: 1px solid #ddd; color: #333;
+    }
+    .btn-outline:hover { background: #f5f5f5; }
+
+    /* ─── Table ─── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+    th { background: #f0f0f0; padding: .65rem .9rem; font-size: .85rem; text-align: left; color: #555; }
+    td { padding: .65rem .9rem; font-size: .9rem; border-top: 1px solid #f0f0f0; }
+    tr:hover td { background: #fafafa; }
+    .badge {
+      display: inline-block; padding: .2rem .55rem; border-radius: 20px;
+      font-size: .75rem; font-weight: 700;
+    }
+    .badge-green { background: #e8f5e9; color: var(--success); }
+    .badge-red { background: #ffebee; color: var(--danger); }
+    .badge-grey { background: #f5f5f5; color: #888; }
+
+    /* ─── Misc ─── */
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1rem; flex-wrap: wrap; gap: .5rem;
+    }
+    .section-header h2 { font-size: 1.1rem; color: var(--primary); }
+    .search-row { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    .search-row input { flex: 1; padding: .6rem .75rem; border: 1px solid #ddd; border-radius: 6px; font-size: .95rem; font-family: inherit; }
+    .msg { padding: .75rem 1rem; border-radius: 6px; margin: .75rem 0; font-size: .9rem; }
+    .msg-success { background: #e8f5e9; color: var(--success); }
+    .msg-error { background: #ffebee; color: var(--danger); }
+    .divider { border: none; border-top: 1px solid #eee; margin: 1.5rem 0; }
+    .revoked td { opacity: .5; text-decoration: line-through; }
+    .log-item { padding: .5rem; border-bottom: 1px solid #f0f0f0; font-size: .85rem; }
+    .log-item .time { color: #aaa; font-size: .75rem; margin-right: .5rem; }
+    .log-item .action { color: var(--primary); font-weight: 700; margin-right: .5rem; }
+  </style>
+</head>
+<body>
+
+<!-- ─── Login ─────────────────────────────────────── -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h1>🔒 後台管理</h1>
+    <p>輔仁大學附設醫院 114年尾牙</p>
+    <input type="password" id="pwInput" placeholder="請輸入密碼" autofocus>
+    <button onclick="doLogin()">登入</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<!-- ─── App ───────────────────────────────────────── -->
+<div id="app">
+  <header>
+    <h1>🎊 尾牙抽獎後台</h1>
+    <button onclick="doLogout()">登出</button>
+  </header>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('participants', this)">抽獎人管理</button>
+    <button class="tab-btn" onclick="switchTab('prizes', this)">獎品管理</button>
+    <button class="tab-btn" onclick="switchTab('results', this)">中獎紀錄</button>
+  </div>
+
+  <!-- ─── Tab A：抽獎人管理 ─── -->
+  <div id="tab-participants" class="tab-content active">
+    <div class="stats" id="participantStats"></div>
+
+    <!-- 單筆新增 -->
+    <div class="section-header"><h2>新增人員</h2></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>姓名 *</label>
+        <input id="pName" type="text" placeholder="王小明" style="width:120px">
+      </div>
+      <div class="form-group">
+        <label>部門 *</label>
+        <input id="pDept" type="text" placeholder="護理部" style="width:140px">
+      </div>
+      <div class="form-group">
+        <label>員工編號</label>
+        <input id="pEmpNo" type="text" placeholder="A001" style="width:100px">
+      </div>
+      <button class="btn btn-primary" onclick="addParticipant()">新增</button>
+    </div>
+    <div id="addParticipantMsg"></div>
+
+    <hr class="divider">
+
+    <!-- CSV 匯入 -->
+    <div class="section-header"><h2>CSV 批次匯入</h2></div>
+    <div class="form-row">
+      <input type="file" id="csvFile" accept=".csv">
+      <button class="btn btn-primary" onclick="importCsv()">匯入</button>
+    </div>
+    <div style="font-size:.8rem;color:#888;margin-bottom:.5rem">
+      格式：姓名,部門,員工編號（第一列為標題）
+    </div>
+    <div id="importMsg"></div>
+
+    <hr class="divider">
+
+    <!-- 清除 -->
+    <div class="section-header"><h2>批次操作</h2></div>
+    <div class="form-row">
+      <button class="btn btn-danger" onclick="clearEligible()">清除所有未中獎人員</button>
+      <button class="btn btn-danger" onclick="clearAllData()">清空全部資料</button>
+    </div>
+
+    <hr class="divider">
+
+    <!-- 搜尋 -->
+    <div class="section-header"><h2>人員名單</h2></div>
+    <div class="search-row">
+      <input id="pSearch" type="text" placeholder="搜尋姓名、部門、員工編號" oninput="filterParticipants()">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>姓名</th><th>部門</th><th>員工編號</th><th>狀態</th><th>操作</th></tr>
+        </thead>
+        <tbody id="participantTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─── Tab B：獎品管理 ─── -->
+  <div id="tab-prizes" class="tab-content">
+    <!-- 新增獎品 -->
+    <div class="section-header"><h2>新增獎品</h2></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>獎品名稱 *</label>
+        <input id="prizeName" type="text" placeholder="43吋電視" style="width:180px">
+      </div>
+      <div class="form-group">
+        <label>數量 *</label>
+        <input id="prizeQty" type="number" min="1" value="1" style="width:80px">
+      </div>
+      <div class="form-group">
+        <label>排序（小 = 先抽）</label>
+        <input id="prizeSortOrder" type="number" min="1" value="1" style="width:80px">
+      </div>
+      <button class="btn btn-primary" onclick="addPrize()">新增</button>
+    </div>
+    <div id="addPrizeMsg"></div>
+
+    <hr class="divider">
+
+    <div class="section-header"><h2>獎品列表</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>排序</th><th>獎品名稱</th><th>總數</th><th>已抽</th><th>狀態</th><th>操作</th></tr>
+        </thead>
+        <tbody id="prizeTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─── Tab C：中獎紀錄 ─── -->
+  <div id="tab-results" class="tab-content">
+    <div class="section-header">
+      <h2>中獎紀錄</h2>
+      <button class="btn btn-success" onclick="exportCsv()">匯出 CSV</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>獎品</th><th>姓名</th><th>部門</th><th>員工編號</th><th>時間</th><th>狀態</th><th>操作</th></tr>
+        </thead>
+        <tbody id="resultsTable"></tbody>
+      </table>
+    </div>
+
+    <hr class="divider">
+    <div class="section-header"><h2>操作日誌（最近 50 筆）</h2></div>
+    <div id="logsList"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/store.js"></script>
+<script>
+  let _allParticipants = [];
+  let _allPrizes = [];
+
+  // ─── Auth ───────────────────────────────────────────────
+  async function doLogin() {
+    const pw = document.getElementById('pwInput').value;
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    try {
+      await Store.signIn(pw);
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      await loadAll();
+    } catch (e) {
+      errEl.textContent = '密碼錯誤，請重新輸入';
+    }
+  }
+
+  document.getElementById('pwInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  async function doLogout() {
+    await Store.signOut();
+    location.reload();
+  }
+
+  // ─── Tabs ────────────────────────────────────────────────
+  function switchTab(name, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'results') loadResults();
+    if (name === 'prizes') renderPrizes();
+    if (name === 'participants') renderParticipants();
+  }
+
+  // ─── Load All ────────────────────────────────────────────
+  async function loadAll() {
+    _allParticipants = await Store.getParticipants();
+    _allPrizes = await Store.getPrizes();
+    renderParticipantStats();
+    renderParticipants();
+    renderPrizes();
+    Store.subscribeParticipants(async () => {
+      _allParticipants = await Store.getParticipants();
+      renderParticipantStats();
+      renderParticipants();
+    });
+    Store.subscribePrizes(async () => {
+      _allPrizes = await Store.getPrizes();
+      renderPrizes();
+    });
+  }
+
+  // ─── Participants ────────────────────────────────────────
+  function renderParticipantStats() {
+    const total = _allParticipants.length;
+    const eligible = _allParticipants.filter(p => p.eligible).length;
+    const won = total - eligible;
+    document.getElementById('participantStats').innerHTML = `
+      <div class="stat-card"><div class="num">${total}</div><div class="label">總人數</div></div>
+      <div class="stat-card"><div class="num">${eligible}</div><div class="label">可抽人數</div></div>
+      <div class="stat-card"><div class="num">${won}</div><div class="label">已中獎</div></div>
+    `;
+  }
+
+  function filterParticipants() {
+    const q = document.getElementById('pSearch').value.toLowerCase();
+    const filtered = q
+      ? _allParticipants.filter(p =>
+          p.name.includes(q) || p.department.includes(q) || (p.employee_no || '').toLowerCase().includes(q))
+      : _allParticipants;
+    renderParticipantTable(filtered);
+  }
+
+  function renderParticipants() {
+    filterParticipants();
+  }
+
+  function renderParticipantTable(list) {
+    const tbody = document.getElementById('participantTable');
+    tbody.innerHTML = list.map(p => `
+      <tr style="${!p.eligible ? 'background:#fff8e1' : ''}">
+        <td>${p.name}</td>
+        <td>${p.department}</td>
+        <td>${p.employee_no || '—'}</td>
+        <td>${p.eligible
+          ? '<span class="badge badge-green">可抽</span>'
+          : '<span class="badge badge-red">已中獎</span>'}</td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="editParticipant('${p.id}','${p.name}','${p.department}','${p.employee_no||''}')">編輯</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteParticipant('${p.id}','${p.name}')">刪除</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  async function addParticipant() {
+    const name = document.getElementById('pName').value.trim();
+    const dept = document.getElementById('pDept').value.trim();
+    const empNo = document.getElementById('pEmpNo').value.trim();
+    const msgEl = document.getElementById('addParticipantMsg');
+    if (!name || !dept) { showMsg(msgEl, '姓名和部門為必填', 'error'); return; }
+    try {
+      await Store.addParticipant(name, dept, empNo);
+      document.getElementById('pName').value = '';
+      document.getElementById('pDept').value = '';
+      document.getElementById('pEmpNo').value = '';
+      _allParticipants = await Store.getParticipants();
+      renderParticipantStats();
+      renderParticipants();
+      showMsg(msgEl, `已新增：${name}`, 'success');
+    } catch (e) {
+      showMsg(msgEl, '新增失敗：' + e.message, 'error');
+    }
+  }
+
+  async function editParticipant(id, name, dept, empNo) {
+    const newName = prompt('姓名', name);
+    if (newName === null) return;
+    const newDept = prompt('部門', dept);
+    if (newDept === null) return;
+    const newEmpNo = prompt('員工編號', empNo);
+    if (newEmpNo === null) return;
+    try {
+      await Store.updateParticipant(id, { name: newName, department: newDept, employee_no: newEmpNo });
+      _allParticipants = await Store.getParticipants();
+      renderParticipants();
+    } catch (e) {
+      alert('更新失敗：' + e.message);
+    }
+  }
+
+  async function deleteParticipant(id, name) {
+    if (!confirm(`確定刪除「${name}」？`)) return;
+    try {
+      await Store.deleteParticipant(id);
+      _allParticipants = await Store.getParticipants();
+      renderParticipantStats();
+      renderParticipants();
+    } catch (e) {
+      alert('刪除失敗：' + e.message);
+    }
+  }
+
+  async function importCsv() {
+    const file = document.getElementById('csvFile').files[0];
+    const msgEl = document.getElementById('importMsg');
+    if (!file) { showMsg(msgEl, '請選擇 CSV 檔案', 'error'); return; }
+    const text = await file.text();
+    try {
+      const r = await Store.importParticipants(text);
+      let msg = `成功匯入 ${r.added} 筆，略過 ${r.skipped} 筆（重複）`;
+      if (r.errors.length) msg += `<br>錯誤：${r.errors.join('、')}`;
+      showMsg(msgEl, msg, r.errors.length ? 'error' : 'success');
+      _allParticipants = await Store.getParticipants();
+      renderParticipantStats();
+      renderParticipants();
+    } catch (e) {
+      showMsg(msgEl, '匯入失敗：' + e.message, 'error');
+    }
+  }
+
+  async function clearEligible() {
+    if (!confirm('確定清除所有未中獎人員？此操作無法復原。')) return;
+    const eligible = _allParticipants.filter(p => p.eligible);
+    for (const p of eligible) await Store.deleteParticipant(p.id);
+    _allParticipants = await Store.getParticipants();
+    renderParticipantStats();
+    renderParticipants();
+  }
+
+  async function clearAllData() {
+    if (!confirm('⚠️ 確定清空全部資料（人員、獎品、中獎紀錄）？此操作無法復原。')) return;
+    if (!confirm('再次確認：清空後所有資料將永久刪除。繼續？')) return;
+    await Store.clearAll();
+    _allParticipants = [];
+    _allPrizes = [];
+    renderParticipantStats();
+    renderParticipants();
+    renderPrizes();
+  }
+
+  // ─── Prizes ──────────────────────────────────────────────
+  function renderPrizes() {
+    const tbody = document.getElementById('prizeTable');
+    tbody.innerHTML = _allPrizes.map(p => `
+      <tr>
+        <td>${p.sort_order}</td>
+        <td>${p.name}</td>
+        <td>${p.quantity}</td>
+        <td>${p.winners_drawn} / ${p.quantity}</td>
+        <td>${p.active
+          ? '<span class="badge badge-green">啟用</span>'
+          : '<span class="badge badge-grey">停用</span>'}</td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="editPrize('${p.id}','${p.name}',${p.quantity},${p.sort_order})">編輯</button>
+          <button class="btn btn-danger btn-sm" onclick="deletePrize('${p.id}','${p.name}')">刪除</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  async function addPrize() {
+    const name = document.getElementById('prizeName').value.trim();
+    const qty = document.getElementById('prizeQty').value;
+    const sort = document.getElementById('prizeSortOrder').value;
+    const msgEl = document.getElementById('addPrizeMsg');
+    if (!name) { showMsg(msgEl, '請填入獎品名稱', 'error'); return; }
+    try {
+      await Store.addPrize(name, qty, sort);
+      document.getElementById('prizeName').value = '';
+      document.getElementById('prizeQty').value = '1';
+      _allPrizes = await Store.getPrizes();
+      renderPrizes();
+      showMsg(msgEl, `已新增：${name}`, 'success');
+    } catch (e) {
+      showMsg(msgEl, '新增失敗：' + e.message, 'error');
+    }
+  }
+
+  async function editPrize(id, name, qty, sort) {
+    const newName = prompt('獎品名稱', name);
+    if (newName === null) return;
+    const newQty = prompt('數量', qty);
+    if (newQty === null) return;
+    const newSort = prompt('排序', sort);
+    if (newSort === null) return;
+    try {
+      await Store.updatePrize(id, { name: newName, quantity: parseInt(newQty), sort_order: parseInt(newSort) });
+      _allPrizes = await Store.getPrizes();
+      renderPrizes();
+    } catch (e) {
+      alert('更新失敗：' + e.message);
+    }
+  }
+
+  async function deletePrize(id, name) {
+    if (!confirm(`確定刪除「${name}」？`)) return;
+    try {
+      const r = await Store.deletePrize(id);
+      if (r.deactivated) alert(`「${name}」已有中獎紀錄，已改為停用。`);
+      _allPrizes = await Store.getPrizes();
+      renderPrizes();
+    } catch (e) {
+      alert('刪除失敗：' + e.message);
+    }
+  }
+
+  // ─── Results ─────────────────────────────────────────────
+  async function loadResults() {
+    const results = await Store.getResults();
+    const logs = await Store.getLogs();
+    renderResultsTable(results);
+    renderLogs(logs);
+  }
+
+  function renderResultsTable(results) {
+    const tbody = document.getElementById('resultsTable');
+    tbody.innerHTML = results.map(r => `
+      <tr class="${r.revoked ? 'revoked' : ''}">
+        <td>${r.prize_name}</td>
+        <td>${r.participant_name}</td>
+        <td>${r.participant_dept}</td>
+        <td>${r.participant_employee_no || '—'}</td>
+        <td>${new Date(r.drawn_at).toLocaleString('zh-TW')}</td>
+        <td>${r.revoked
+          ? '<span class="badge badge-grey">已重抽</span>'
+          : '<span class="badge badge-green">有效</span>'}</td>
+        <td>${!r.revoked
+          ? `<button class="btn btn-warning btn-sm" onclick="revokeResult('${r.id}','${r.participant_name}')">重抽</button>`
+          : ''}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderLogs(logs) {
+    const el = document.getElementById('logsList');
+    el.innerHTML = logs.map(l => `
+      <div class="log-item">
+        <span class="time">${new Date(l.created_at).toLocaleString('zh-TW')}</span>
+        <span class="action">[${l.action}]</span>
+        <span>${l.detail}</span>
+      </div>
+    `).join('');
+  }
+
+  async function revokeResult(id, name) {
+    const reason = prompt(`重抽原因（${name}）`);
+    if (reason === null) return;
+    if (!reason.trim()) { alert('請填入重抽原因'); return; }
+    try {
+      await Store.revoke(id, reason.trim());
+      await loadResults();
+      _allParticipants = await Store.getParticipants();
+      renderParticipantStats();
+    } catch (e) {
+      alert('重抽失敗：' + e.message);
+    }
+  }
+
+  async function exportCsv() {
+    const csv = await Store.exportResultsCsv();
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `中獎名單_${new Date().toLocaleDateString('zh-TW').replace(/\//g,'-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ─── Utils ───────────────────────────────────────────────
+  function showMsg(el, msg, type) {
+    el.innerHTML = `<div class="msg msg-${type === 'success' ? 'success' : 'error'}">${msg}</div>`;
+    setTimeout(() => el.innerHTML = '', 4000);
+  }
+</script>
+</body>
+</html>
