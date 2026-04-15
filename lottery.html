@@ -271,6 +271,12 @@
       _prizes = await Store.getPrizes();
       renderPrizeSelect();
     });
+    // 後台新增/刪除人員時即時更新可抽人數
+    Store.subscribeParticipants(async () => {
+      _eligible = await Store.getEligible();
+      updateEligibleCount();
+      onPrizeChange();
+    });
   }
 
   // ─── Prize Select ────────────────────────────────────────

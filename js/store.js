@@ -213,7 +213,9 @@
 
     // ── Draw Core ─────────────────────────────────────────────
 
-    async draw(prizeId) {
+    async draw(prizeId, _retryCount = 0) {
+      if (_retryCount > 5) throw new Error('抽獎衝突過多，請稍後再試');
+
       const eligible = await this.getEligible();
       if (eligible.length === 0) return null;
 
@@ -226,10 +228,25 @@
       if (!prize || !prize.active) return null;
       if (prize.winners_drawn >= prize.quantity) return null;
 
+      // 用 crypto.getRandomValues() 選出候選人
       const arr = new Uint32Array(1);
       crypto.getRandomValues(arr);
       const idx = arr[0] % eligible.length;
       const winner = eligible[idx];
+
+      // 樂觀鎖定：只在 eligible=true 時才更新，若被搶先則 data 為空
+      const { data: claimed } = await _db
+        .from('participants')
+        .update({ eligible: false })
+        .eq('id', winner.id)
+        .eq('eligible', true)   // 只有仍可抽才更新
+        .select('id')
+        .maybeSingle();
+
+      // 若另一台剛好也抽到同一人，claimed 為 null → 重試
+      if (!claimed) {
+        return this.draw(prizeId, _retryCount + 1);
+      }
 
       const { data: result, error } = await _db
         .from('draw_results')
@@ -245,7 +262,6 @@
         .single();
       if (error) throw error;
 
-      await _db.from('participants').update({ eligible: false }).eq('id', winner.id);
       await _db.from('prizes').update({ winners_drawn: prize.winners_drawn + 1 }).eq('id', prizeId);
       await this.addLog('DRAW', `抽出：${winner.name}（${winner.department}）獲得 ${prize.name}`);
 
