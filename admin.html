@@ -91,14 +91,28 @@
     .btn-danger { background: var(--danger); color: #fff; }
     .btn-danger:hover { background: #b71c1c; }
     .btn-warning { background: var(--warning); color: #fff; }
-    .btn-warning:hover { background: #e65100; }
     .btn-success { background: var(--success); color: #fff; }
-    .btn-success:hover { background: #1b5e20; }
     .btn-sm { padding: .3rem .65rem; font-size: .8rem; }
-    .btn-outline {
-      background: #fff; border: 1px solid #ddd; color: #333;
-    }
+    .btn-outline { background: #fff; border: 1px solid #ddd; color: #333; }
     .btn-outline:hover { background: #f5f5f5; }
+
+    /* ─── File Upload ─── */
+    .file-drop {
+      border: 2px dashed #ddd; border-radius: 10px; padding: 1.5rem;
+      text-align: center; cursor: pointer; transition: all .2s; background: #fafafa;
+      position: relative;
+    }
+    .file-drop:hover, .file-drop.drag-over {
+      border-color: var(--primary); background: #fff5f5;
+    }
+    .file-drop input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .file-drop-icon { font-size: 2rem; margin-bottom: .4rem; }
+    .file-drop-text { font-size: .9rem; color: #555; }
+    .file-drop-hint { font-size: .78rem; color: #aaa; margin-top: .25rem; }
+    .file-drop.has-file { border-color: var(--success); background: #f1f8f1; }
+    .file-drop.has-file .file-drop-icon::after { content: ' ✅'; }
 
     /* ─── Table ─── */
     .table-wrap { overflow-x: auto; }
@@ -122,14 +136,29 @@
     .section-header h2 { font-size: 1.1rem; color: var(--primary); }
     .search-row { display: flex; gap: .5rem; margin-bottom: 1rem; }
     .search-row input { flex: 1; padding: .6rem .75rem; border: 1px solid #ddd; border-radius: 6px; font-size: .95rem; font-family: inherit; }
-    .msg { padding: .75rem 1rem; border-radius: 6px; margin: .75rem 0; font-size: .9rem; }
-    .msg-success { background: #e8f5e9; color: var(--success); }
-    .msg-error { background: #ffebee; color: var(--danger); }
     .divider { border: none; border-top: 1px solid #eee; margin: 1.5rem 0; }
     .revoked td { opacity: .5; text-decoration: line-through; }
     .log-item { padding: .5rem; border-bottom: 1px solid #f0f0f0; font-size: .85rem; }
     .log-item .time { color: #aaa; font-size: .75rem; margin-right: .5rem; }
     .log-item .action { color: var(--primary); font-weight: 700; margin-right: .5rem; }
+
+    /* ─── Toast ─── */
+    #toastContainer {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999;
+      display: flex; flex-direction: column; gap: .5rem;
+    }
+    .toast {
+      padding: .85rem 1.25rem; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.15);
+      font-size: .9rem; font-weight: 700; max-width: 320px;
+      animation: slideInRight .3s ease; display: flex; align-items: center; gap: .6rem;
+    }
+    .toast-success { background: #e8f5e9; color: var(--success); border-left: 4px solid var(--success); }
+    .toast-error { background: #ffebee; color: var(--danger); border-left: 4px solid var(--danger); }
+    .toast-info { background: #e3f2fd; color: #1565c0; border-left: 4px solid #1565c0; }
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -152,7 +181,6 @@
     <button onclick="doLogout()">登出</button>
   </header>
 
-  <!-- Tabs -->
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('participants', this)">抽獎人管理</button>
     <button class="tab-btn" onclick="switchTab('prizes', this)">獎品管理</button>
@@ -180,24 +208,25 @@
       </div>
       <button class="btn btn-primary" onclick="addParticipant()">新增</button>
     </div>
-    <div id="addParticipantMsg"></div>
 
     <hr class="divider">
 
-    <!-- CSV 匯入 -->
-    <div class="section-header"><h2>CSV 批次匯入</h2></div>
-    <div class="form-row">
-      <input type="file" id="csvFile" accept=".csv">
-      <button class="btn btn-primary" onclick="importCsv()">匯入</button>
+    <!-- Excel / CSV 匯入 -->
+    <div class="section-header"><h2>Excel / CSV 批次匯入</h2></div>
+    <div class="file-drop" id="participantDrop">
+      <input type="file" id="participantFile" accept=".xlsx,.xls,.csv" onchange="handleParticipantFile(this.files[0])">
+      <div class="file-drop-icon">📤</div>
+      <div class="file-drop-text">點擊或拖曳檔案至此</div>
+      <div class="file-drop-hint">支援 .xlsx、.xls、.csv｜欄位：姓名、部門、員工編號</div>
     </div>
-    <div style="font-size:.8rem;color:#888;margin-bottom:.5rem">
-      格式：姓名,部門,員工編號（第一列為標題）
+    <div style="margin-top:.5rem;display:flex;gap:.5rem;align-items:center">
+      <button class="btn btn-primary btn-sm" onclick="doImportParticipants()">匯入</button>
+      <span id="participantFileLabel" style="font-size:.85rem;color:#888">尚未選擇檔案</span>
     </div>
-    <div id="importMsg"></div>
 
     <hr class="divider">
 
-    <!-- 清除 -->
+    <!-- 批次操作 -->
     <div class="section-header"><h2>批次操作</h2></div>
     <div class="form-row">
       <button class="btn btn-danger" onclick="clearEligible()">清除所有未中獎人員</button>
@@ -206,16 +235,14 @@
 
     <hr class="divider">
 
-    <!-- 搜尋 -->
+    <!-- 搜尋 + 名單 -->
     <div class="section-header"><h2>人員名單</h2></div>
     <div class="search-row">
       <input id="pSearch" type="text" placeholder="搜尋姓名、部門、員工編號" oninput="filterParticipants()">
     </div>
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr><th>姓名</th><th>部門</th><th>員工編號</th><th>狀態</th><th>操作</th></tr>
-        </thead>
+        <thead><tr><th>姓名</th><th>部門</th><th>員工編號</th><th>狀態</th><th>操作</th></tr></thead>
         <tbody id="participantTable"></tbody>
       </table>
     </div>
@@ -223,7 +250,8 @@
 
   <!-- ─── Tab B：獎品管理 ─── -->
   <div id="tab-prizes" class="tab-content">
-    <!-- 新增獎品 -->
+
+    <!-- 單筆新增 -->
     <div class="section-header"><h2>新增獎品</h2></div>
     <div class="form-row">
       <div class="form-group">
@@ -240,16 +268,28 @@
       </div>
       <button class="btn btn-primary" onclick="addPrize()">新增</button>
     </div>
-    <div id="addPrizeMsg"></div>
+
+    <hr class="divider">
+
+    <!-- Excel / CSV 匯入 -->
+    <div class="section-header"><h2>Excel / CSV 批次匯入</h2></div>
+    <div class="file-drop" id="prizeDrop">
+      <input type="file" id="prizeFile" accept=".xlsx,.xls,.csv" onchange="handlePrizeFile(this.files[0])">
+      <div class="file-drop-icon">📤</div>
+      <div class="file-drop-text">點擊或拖曳檔案至此</div>
+      <div class="file-drop-hint">支援 .xlsx、.xls、.csv｜欄位：獎項名稱、數量、排序</div>
+    </div>
+    <div style="margin-top:.5rem;display:flex;gap:.5rem;align-items:center">
+      <button class="btn btn-primary btn-sm" onclick="doImportPrizes()">匯入</button>
+      <span id="prizeFileLabel" style="font-size:.85rem;color:#888">尚未選擇檔案</span>
+    </div>
 
     <hr class="divider">
 
     <div class="section-header"><h2>獎品列表</h2></div>
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr><th>排序</th><th>獎品名稱</th><th>總數</th><th>已抽</th><th>狀態</th><th>操作</th></tr>
-        </thead>
+        <thead><tr><th>排序</th><th>獎品名稱</th><th>總數</th><th>已抽</th><th>狀態</th><th>操作</th></tr></thead>
         <tbody id="prizeTable"></tbody>
       </table>
     </div>
@@ -263,9 +303,7 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr><th>獎品</th><th>姓名</th><th>部門</th><th>員工編號</th><th>時間</th><th>狀態</th><th>操作</th></tr>
-        </thead>
+        <thead><tr><th>獎品</th><th>姓名</th><th>部門</th><th>員工編號</th><th>時間</th><th>狀態</th><th>操作</th></tr></thead>
         <tbody id="resultsTable"></tbody>
       </table>
     </div>
@@ -276,12 +314,28 @@
   </div>
 </div>
 
+<!-- Toast -->
+<div id="toastContainer"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/config.js"></script>
 <script src="js/store.js"></script>
 <script>
   let _allParticipants = [];
   let _allPrizes = [];
+  let _pendingParticipantFile = null;
+  let _pendingPrizeFile = null;
+
+  // ─── Toast ───────────────────────────────────────────────
+  function showToast(msg, type = 'info') {
+    const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+    document.getElementById('toastContainer').appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
 
   // ─── Auth ───────────────────────────────────────────────
   async function doLogin() {
@@ -334,6 +388,159 @@
       _allPrizes = await Store.getPrizes();
       renderPrizes();
     });
+    setupDragDrop('participantDrop');
+    setupDragDrop('prizeDrop');
+  }
+
+  // ─── Drag & Drop ─────────────────────────────────────────
+  function setupDragDrop(dropId) {
+    const el = document.getElementById(dropId);
+    if (!el) return;
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      if (dropId === 'participantDrop') handleParticipantFile(file);
+      else handlePrizeFile(file);
+    });
+  }
+
+  // ─── Excel / CSV Parser ───────────────────────────────────
+  async function parseFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      const isCsv = file.name.toLowerCase().endsWith('.csv');
+
+      reader.onload = e => {
+        try {
+          if (isCsv) {
+            // CSV 解析
+            const text = new TextDecoder('utf-8').decode(new Uint8Array(e.target.result))
+              .replace(/^\uFEFF/, '');
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+            const rows = lines.slice(1).map(line => {
+              const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+              const obj = {};
+              headers.forEach((h, i) => obj[h] = cols[i] || '');
+              return obj;
+            }).filter(r => Object.values(r).some(v => v));
+            resolve(rows);
+          } else {
+            // Excel 解析
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+            resolve(rows);
+          }
+        } catch (err) {
+          reject(new Error('無法解析檔案：' + err.message));
+        }
+      };
+      reader.onerror = () => reject(new Error('讀取檔案失敗'));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function findColumn(headers, candidates) {
+    return headers.find(h => candidates.some(c => h.includes(c))) || null;
+  }
+
+  // ─── Participants Import ──────────────────────────────────
+  function handleParticipantFile(file) {
+    if (!file) return;
+    _pendingParticipantFile = file;
+    document.getElementById('participantFileLabel').textContent = `已選擇：${file.name}`;
+    document.getElementById('participantDrop').classList.add('has-file');
+  }
+
+  async function doImportParticipants() {
+    if (!_pendingParticipantFile) { showToast('請先選擇檔案', 'error'); return; }
+    try {
+      const rows = await parseFile(_pendingParticipantFile);
+      if (rows.length === 0) { showToast('檔案中沒有資料', 'error'); return; }
+
+      const headers = Object.keys(rows[0]);
+      const nameCol = findColumn(headers, ['姓名', '名字', 'name', 'Name']);
+      const deptCol = findColumn(headers, ['部門', '單位', 'department', 'Department']);
+      const empNoCol = findColumn(headers, ['員工編號', '工號', '編號', 'employeeId', 'ID']);
+
+      if (!nameCol) { showToast('找不到「姓名」欄位，請確認檔案格式', 'error'); return; }
+
+      const csvText = [
+        '姓名,部門,員工編號',
+        ...rows.map(r => [
+          r[nameCol] || '',
+          deptCol ? (r[deptCol] || '') : '',
+          empNoCol ? (r[empNoCol] || '') : ''
+        ].join(','))
+      ].join('\n');
+
+      const result = await Store.importParticipants(csvText);
+      _allParticipants = await Store.getParticipants();
+      renderParticipantStats();
+      renderParticipants();
+
+      let msg = `成功匯入 ${result.added} 筆，略過 ${result.skipped} 筆（重複）`;
+      showToast(msg, result.errors.length ? 'error' : 'success');
+      if (result.errors.length) showToast(result.errors.slice(0,3).join('、'), 'error');
+
+      _pendingParticipantFile = null;
+      document.getElementById('participantFileLabel').textContent = '尚未選擇檔案';
+      document.getElementById('participantDrop').classList.remove('has-file');
+    } catch (e) {
+      showToast('匯入失敗：' + e.message, 'error');
+    }
+  }
+
+  // ─── Prizes Import ────────────────────────────────────────
+  function handlePrizeFile(file) {
+    if (!file) return;
+    _pendingPrizeFile = file;
+    document.getElementById('prizeFileLabel').textContent = `已選擇：${file.name}`;
+    document.getElementById('prizeDrop').classList.add('has-file');
+  }
+
+  async function doImportPrizes() {
+    if (!_pendingPrizeFile) { showToast('請先選擇檔案', 'error'); return; }
+    try {
+      const rows = await parseFile(_pendingPrizeFile);
+      if (rows.length === 0) { showToast('檔案中沒有資料', 'error'); return; }
+
+      const headers = Object.keys(rows[0]);
+      const nameCol = findColumn(headers, ['獎項名稱', '獎項', '品名', '品項', '名稱', 'prize', 'Prize', 'Name', 'name']);
+      const qtyCol = findColumn(headers, ['數量', '個數', 'quantity', 'Quantity']);
+      const sortCol = findColumn(headers, ['排序', '順序', 'sort', 'order']);
+
+      if (!nameCol) { showToast('找不到「獎項名稱」欄位，請確認檔案格式', 'error'); return; }
+
+      const prizesData = rows
+        .filter(r => r[nameCol] && String(r[nameCol]).trim())
+        .map((r, i) => ({
+          name: String(r[nameCol]).trim(),
+          quantity: qtyCol ? (parseInt(r[qtyCol]) || 1) : 1,
+          sortOrder: sortCol ? (parseInt(r[sortCol]) || (i + 1)) : (i + 1)
+        }));
+
+      if (prizesData.length === 0) { showToast('沒有有效的獎品資料', 'error'); return; }
+
+      const result = await Store.importPrizes(prizesData);
+      _allPrizes = await Store.getPrizes();
+      renderPrizes();
+
+      showToast(`成功匯入 ${result.added} 項獎品`, 'success');
+      if (result.errors.length) showToast(result.errors.slice(0,3).join('、'), 'error');
+
+      _pendingPrizeFile = null;
+      document.getElementById('prizeFileLabel').textContent = '尚未選擇檔案';
+      document.getElementById('prizeDrop').classList.remove('has-file');
+    } catch (e) {
+      showToast('匯入失敗：' + e.message, 'error');
+    }
   }
 
   // ─── Participants ────────────────────────────────────────
@@ -357,13 +564,10 @@
     renderParticipantTable(filtered);
   }
 
-  function renderParticipants() {
-    filterParticipants();
-  }
+  function renderParticipants() { filterParticipants(); }
 
   function renderParticipantTable(list) {
-    const tbody = document.getElementById('participantTable');
-    tbody.innerHTML = list.map(p => `
+    document.getElementById('participantTable').innerHTML = list.map(p => `
       <tr style="${!p.eligible ? 'background:#fff8e1' : ''}">
         <td>${p.name}</td>
         <td>${p.department}</td>
@@ -383,8 +587,7 @@
     const name = document.getElementById('pName').value.trim();
     const dept = document.getElementById('pDept').value.trim();
     const empNo = document.getElementById('pEmpNo').value.trim();
-    const msgEl = document.getElementById('addParticipantMsg');
-    if (!name || !dept) { showMsg(msgEl, '姓名和部門為必填', 'error'); return; }
+    if (!name || !dept) { showToast('姓名和部門為必填', 'error'); return; }
     try {
       await Store.addParticipant(name, dept, empNo);
       document.getElementById('pName').value = '';
@@ -393,9 +596,9 @@
       _allParticipants = await Store.getParticipants();
       renderParticipantStats();
       renderParticipants();
-      showMsg(msgEl, `已新增：${name}`, 'success');
+      showToast(`已新增：${name}`, 'success');
     } catch (e) {
-      showMsg(msgEl, '新增失敗：' + e.message, 'error');
+      showToast('新增失敗：' + e.message, 'error');
     }
   }
 
@@ -410,8 +613,9 @@
       await Store.updateParticipant(id, { name: newName, department: newDept, employee_no: newEmpNo });
       _allParticipants = await Store.getParticipants();
       renderParticipants();
+      showToast('已更新', 'success');
     } catch (e) {
-      alert('更新失敗：' + e.message);
+      showToast('更新失敗：' + e.message, 'error');
     }
   }
 
@@ -422,26 +626,9 @@
       _allParticipants = await Store.getParticipants();
       renderParticipantStats();
       renderParticipants();
+      showToast(`已刪除：${name}`, 'success');
     } catch (e) {
-      alert('刪除失敗：' + e.message);
-    }
-  }
-
-  async function importCsv() {
-    const file = document.getElementById('csvFile').files[0];
-    const msgEl = document.getElementById('importMsg');
-    if (!file) { showMsg(msgEl, '請選擇 CSV 檔案', 'error'); return; }
-    const text = await file.text();
-    try {
-      const r = await Store.importParticipants(text);
-      let msg = `成功匯入 ${r.added} 筆，略過 ${r.skipped} 筆（重複）`;
-      if (r.errors.length) msg += `<br>錯誤：${r.errors.join('、')}`;
-      showMsg(msgEl, msg, r.errors.length ? 'error' : 'success');
-      _allParticipants = await Store.getParticipants();
-      renderParticipantStats();
-      renderParticipants();
-    } catch (e) {
-      showMsg(msgEl, '匯入失敗：' + e.message, 'error');
+      showToast('刪除失敗：' + e.message, 'error');
     }
   }
 
@@ -452,6 +639,7 @@
     _allParticipants = await Store.getParticipants();
     renderParticipantStats();
     renderParticipants();
+    showToast('已清除未中獎人員', 'success');
   }
 
   async function clearAllData() {
@@ -463,12 +651,12 @@
     renderParticipantStats();
     renderParticipants();
     renderPrizes();
+    showToast('已清空全部資料', 'success');
   }
 
   // ─── Prizes ──────────────────────────────────────────────
   function renderPrizes() {
-    const tbody = document.getElementById('prizeTable');
-    tbody.innerHTML = _allPrizes.map(p => `
+    document.getElementById('prizeTable').innerHTML = _allPrizes.map(p => `
       <tr>
         <td>${p.sort_order}</td>
         <td>${p.name}</td>
@@ -489,17 +677,16 @@
     const name = document.getElementById('prizeName').value.trim();
     const qty = document.getElementById('prizeQty').value;
     const sort = document.getElementById('prizeSortOrder').value;
-    const msgEl = document.getElementById('addPrizeMsg');
-    if (!name) { showMsg(msgEl, '請填入獎品名稱', 'error'); return; }
+    if (!name) { showToast('請填入獎品名稱', 'error'); return; }
     try {
       await Store.addPrize(name, qty, sort);
       document.getElementById('prizeName').value = '';
       document.getElementById('prizeQty').value = '1';
       _allPrizes = await Store.getPrizes();
       renderPrizes();
-      showMsg(msgEl, `已新增：${name}`, 'success');
+      showToast(`已新增：${name}`, 'success');
     } catch (e) {
-      showMsg(msgEl, '新增失敗：' + e.message, 'error');
+      showToast('新增失敗：' + e.message, 'error');
     }
   }
 
@@ -514,8 +701,9 @@
       await Store.updatePrize(id, { name: newName, quantity: parseInt(newQty), sort_order: parseInt(newSort) });
       _allPrizes = await Store.getPrizes();
       renderPrizes();
+      showToast('已更新', 'success');
     } catch (e) {
-      alert('更新失敗：' + e.message);
+      showToast('更新失敗：' + e.message, 'error');
     }
   }
 
@@ -523,25 +711,19 @@
     if (!confirm(`確定刪除「${name}」？`)) return;
     try {
       const r = await Store.deletePrize(id);
-      if (r.deactivated) alert(`「${name}」已有中獎紀錄，已改為停用。`);
+      if (r.deactivated) showToast(`「${name}」已有中獎紀錄，已改為停用`, 'info');
+      else showToast(`已刪除：${name}`, 'success');
       _allPrizes = await Store.getPrizes();
       renderPrizes();
     } catch (e) {
-      alert('刪除失敗：' + e.message);
+      showToast('刪除失敗：' + e.message, 'error');
     }
   }
 
   // ─── Results ─────────────────────────────────────────────
   async function loadResults() {
-    const results = await Store.getResults();
-    const logs = await Store.getLogs();
-    renderResultsTable(results);
-    renderLogs(logs);
-  }
-
-  function renderResultsTable(results) {
-    const tbody = document.getElementById('resultsTable');
-    tbody.innerHTML = results.map(r => `
+    const [results, logs] = await Promise.all([Store.getResults(), Store.getLogs()]);
+    document.getElementById('resultsTable').innerHTML = results.map(r => `
       <tr class="${r.revoked ? 'revoked' : ''}">
         <td>${r.prize_name}</td>
         <td>${r.participant_name}</td>
@@ -556,11 +738,7 @@
           : ''}</td>
       </tr>
     `).join('');
-  }
-
-  function renderLogs(logs) {
-    const el = document.getElementById('logsList');
-    el.innerHTML = logs.map(l => `
+    document.getElementById('logsList').innerHTML = logs.map(l => `
       <div class="log-item">
         <span class="time">${new Date(l.created_at).toLocaleString('zh-TW')}</span>
         <span class="action">[${l.action}]</span>
@@ -572,32 +750,32 @@
   async function revokeResult(id, name) {
     const reason = prompt(`重抽原因（${name}）`);
     if (reason === null) return;
-    if (!reason.trim()) { alert('請填入重抽原因'); return; }
+    if (!reason.trim()) { showToast('請填入重抽原因', 'error'); return; }
     try {
       await Store.revoke(id, reason.trim());
       await loadResults();
       _allParticipants = await Store.getParticipants();
       renderParticipantStats();
+      showToast(`已撤銷 ${name} 的中獎，可重新抽獎`, 'success');
     } catch (e) {
-      alert('重抽失敗：' + e.message);
+      showToast('重抽失敗：' + e.message, 'error');
     }
   }
 
   async function exportCsv() {
-    const csv = await Store.exportResultsCsv();
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `中獎名單_${new Date().toLocaleDateString('zh-TW').replace(/\//g,'-')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // ─── Utils ───────────────────────────────────────────────
-  function showMsg(el, msg, type) {
-    el.innerHTML = `<div class="msg msg-${type === 'success' ? 'success' : 'error'}">${msg}</div>`;
-    setTimeout(() => el.innerHTML = '', 4000);
+    try {
+      const csv = await Store.exportResultsCsv();
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `中獎名單_${new Date().toLocaleDateString('zh-TW').replace(/\//g,'-')}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('CSV 已下載', 'success');
+    } catch (e) {
+      showToast('匯出失敗：' + e.message, 'error');
+    }
   }
 </script>
 </body>

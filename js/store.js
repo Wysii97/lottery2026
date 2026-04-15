@@ -165,6 +165,29 @@
       return data;
     },
 
+    async importPrizes(prizesData) {
+      // prizesData: [{name, quantity, sortOrder}]
+      let added = 0;
+      const errors = [];
+
+      for (let i = 0; i < prizesData.length; i++) {
+        const row = prizesData[i];
+        if (!row.name || !row.name.trim()) {
+          errors.push(`第 ${i + 1} 列：獎品名稱空白`);
+          continue;
+        }
+        try {
+          await this.addPrize(row.name.trim(), row.quantity || 1, row.sortOrder || (i + 1));
+          added++;
+        } catch (e) {
+          errors.push(`第 ${i + 1} 列（${row.name}）：${e.message}`);
+        }
+      }
+
+      if (added > 0) await this.addLog('PRIZE_IMPORT', `匯入獎品：成功 ${added} 筆`);
+      return { added, errors };
+    },
+
     async deletePrize(id) {
       const { data: results } = await _db
         .from('draw_results')
