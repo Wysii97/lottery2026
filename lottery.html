@@ -158,16 +158,17 @@
       padding: .5rem 1rem; max-width: 92vw;
     }
     .overlay-winner-card {
-      background: rgba(255,215,0,.1); border: 1px solid rgba(255,215,0,.35);
-      border-radius: 14px; padding: .9rem 1.4rem; text-align: center;
+      background: rgba(255,215,0,.08); border: 1px solid rgba(255,215,0,.3);
+      border-radius: 20px; padding: 1.5rem 2.5rem; text-align: center;
       animation: pulse 1s ease-in-out infinite alternate;
     }
     .overlay-winner-card .winner-name-big {
-      font-size: clamp(2rem, 5vw, 4rem); font-weight: 900; color: var(--gold);
-      text-shadow: 0 0 40px rgba(255,215,0,.8);
+      font-size: clamp(4rem, 10vw, 8rem); font-weight: 900; color: var(--gold);
+      text-shadow: 0 0 60px rgba(255,215,0,.9); line-height: 1.1;
     }
-    .overlay-winner-card .winner-dept { font-size: clamp(.9rem, 2vw, 1.5rem); color: var(--text-on-dark); margin-top: .3rem; }
-    .overlay-winner-card .winner-empno { font-size: clamp(.75rem, 1.5vw, 1.1rem); color: rgba(255,228,181,.6); margin-top: .2rem; }
+    .overlay-winner-card .winner-dept { font-size: clamp(1.4rem, 3.5vw, 2.8rem); color: var(--text-on-dark); margin-top: .6rem; }
+    .overlay-winner-card .winner-empno { font-size: clamp(1rem, 2.5vw, 1.8rem); color: rgba(255,228,181,.6); margin-top: .4rem; }
+    .overlay-progress { font-size: clamp(.9rem, 2vw, 1.4rem); color: rgba(255,228,181,.6); margin-top: 1.5rem; letter-spacing: .05em; }
 
     /* ─── Batch count input ─── */
     .batch-row {
@@ -240,10 +241,11 @@
 </div>
 
 <!-- ─── Overlay ─── -->
-<div id="overlay" onclick="closeOverlay()">
+<div id="overlay" onclick="handleOverlayClick()">
   <div class="overlay-prize" id="overlayPrize"></div>
   <div id="overlayWinners"></div>
-  <div class="overlay-hint">點擊任意處關閉</div>
+  <div class="overlay-progress" id="overlayProgress"></div>
+  <div class="overlay-hint" id="overlayHint">點擊任意處關閉</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -258,6 +260,8 @@
   let _overlayTimer = null;
   let _isDrawing = false;
   let _isAnimating = false;
+  let _batchResults = [];
+  let _batchIndex = 0;
 
   // ─── Auth ────────────────────────────────────────────────
   async function doLogin() {
@@ -366,6 +370,11 @@
     msg.textContent = `可抽 ${_eligible.length} 人 ／ 剩餘 ${remaining} 名`;
     wrap.classList.remove('idle');
     document.getElementById('marqueeText').textContent = '按下按鈕開始';
+    // 批次人數上限 = 可抽人數 與 剩餘名額 中的較小值
+    const batchInput = document.getElementById('batchCount');
+    const maxBatch = Math.min(_eligible.length, remaining);
+    batchInput.max = maxBatch;
+    if (parseInt(batchInput.value) > maxBatch) batchInput.value = maxBatch;
   }
 
   function setMarqueeIdle(msg) {
@@ -386,12 +395,12 @@
     document.getElementById('drawBtn').disabled = true;
     document.getElementById('statusMsg').textContent = '抽獎中…';
 
-    // 批次抽獎：依序抽出 batchCount 人
+    // 先一次抽完，消除 DB 等待的空白期
     const results = [];
     for (let i = 0; i < batchCount; i++) {
       const r = await Store.draw(prizeId);
       if (r) results.push(r);
-      else break; // 無人可抽或獎項已抽完
+      else break;
     }
 
     if (results.length === 0) {
@@ -402,13 +411,33 @@
       return;
     }
 
-    // 跑馬燈最後停在最後一位得獎者（視覺效果）
-    const lastWinner = results[results.length - 1];
-    const displayList = buildMarqueeList(lastWinner.participant_name);
-    runMarqueeAnimation(displayList, lastWinner, () => {
-      showOverlay(results);
-      _isDrawing = false;
+    // 逐一播放揭曉動畫
+    _batchResults = results;
+    _batchIndex = 0;
+    revealNext();
+  }
+
+  function revealNext() {
+    if (_batchIndex >= _batchResults.length) { closeOverlay(); return; }
+    const result = _batchResults[_batchIndex];
+    const displayList = buildMarqueeList(result.participant_name);
+    runMarqueeAnimation(displayList, result, () => {
+      showOverlay(result, _batchIndex + 1, _batchResults.length);
     });
+  }
+
+  function advanceToNext() {
+    if (_overlayTimer) clearTimeout(_overlayTimer);
+    document.getElementById('overlay').classList.remove('show');
+    _batchIndex++;
+    setTimeout(revealNext, 350);
+  }
+
+  function handleOverlayClick() {
+    if (_overlayTimer) clearTimeout(_overlayTimer);
+    const isLast = _batchIndex + 1 >= _batchResults.length;
+    if (isLast) closeOverlay();
+    else advanceToNext();
   }
 
   function buildMarqueeList(winnerName) {
@@ -451,32 +480,42 @@
   }
 
   // ─── Overlay ─────────────────────────────────────────────
-  function showOverlay(results) {
-    if (!Array.isArray(results)) results = [results];
-    document.getElementById('overlayPrize').textContent = '🎁 ' + results[0].prize_name;
+  function showOverlay(result, current, total) {
+    document.getElementById('overlayPrize').textContent = '🎁 ' + result.prize_name;
 
-    const container = document.getElementById('overlayWinners');
-    container.innerHTML = results.map(r => `
+    document.getElementById('overlayWinners').innerHTML = `
       <div class="overlay-winner-card">
-        <div class="winner-name-big">${r.participant_name}</div>
-        <div class="winner-dept">${r.participant_dept}</div>
-        ${r.participant_employee_no
-          ? `<div class="winner-empno">員工編號：${r.participant_employee_no}</div>`
+        <div class="winner-name-big">${result.participant_name}</div>
+        <div class="winner-dept">${result.participant_dept}</div>
+        ${result.participant_employee_no
+          ? `<div class="winner-empno">員工編號：${result.participant_employee_no}</div>`
           : ''}
       </div>
-    `).join('');
+    `;
+
+    const isLast = current >= total;
+    document.getElementById('overlayProgress').textContent =
+      total > 1 ? `第 ${current} 位 / 共 ${total} 位` : '';
+    document.getElementById('overlayHint').textContent =
+      isLast ? '點擊任意處關閉' : '點擊繼續下一位 →';
 
     document.getElementById('overlay').classList.add('show');
     launchConfetti();
 
     if (_overlayTimer) clearTimeout(_overlayTimer);
-    _overlayTimer = setTimeout(closeOverlay, 5000);
+    // 最後一位停留 5 秒，中間每位停留 3 秒後自動前進
+    _overlayTimer = setTimeout(() => {
+      if (isLast) closeOverlay(); else advanceToNext();
+    }, isLast ? 5000 : 3000);
   }
 
   function closeOverlay() {
     document.getElementById('overlay').classList.remove('show');
     if (_overlayTimer) clearTimeout(_overlayTimer);
     _isAnimating = false;
+    _isDrawing = false;
+    _batchResults = [];
+    _batchIndex = 0;
     loadAll();
   }
 

@@ -142,6 +142,13 @@
     .log-item .time { color: #aaa; font-size: .75rem; margin-right: .5rem; }
     .log-item .action { color: var(--primary); font-weight: 700; margin-right: .5rem; }
 
+    /* ─── Inline Edit ─── */
+    .inline-edit-input {
+      padding: .3rem .5rem; border: 1px solid #1976d2; border-radius: 4px;
+      font-size: .9rem; font-family: inherit; background: #f0f7ff; width: 100%;
+    }
+    tr.editing td { background: #e8f0fe !important; }
+
     /* ─── Toast ─── */
     #toastContainer {
       position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999;
@@ -326,6 +333,12 @@
   let _allPrizes = [];
   let _pendingParticipantFile = null;
   let _pendingPrizeFile = null;
+  let _editingParticipantId = null;
+  let _editingPrizeId = null;
+
+  function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
 
   // ─── Toast ───────────────────────────────────────────────
   function showToast(msg, type = 'info') {
@@ -567,20 +580,32 @@
   function renderParticipants() { filterParticipants(); }
 
   function renderParticipantTable(list) {
-    document.getElementById('participantTable').innerHTML = list.map(p => `
-      <tr style="${!p.eligible ? 'background:#fff8e1' : ''}">
-        <td>${p.name}</td>
-        <td>${p.department}</td>
-        <td>${p.employee_no || '—'}</td>
+    document.getElementById('participantTable').innerHTML = list.map(p => {
+      if (p.id === _editingParticipantId) {
+        return `<tr class="editing">
+          <td><input class="inline-edit-input" id="ep_name" value="${escHtml(p.name)}" style="width:100px"></td>
+          <td><input class="inline-edit-input" id="ep_dept" value="${escHtml(p.department)}" style="width:130px"></td>
+          <td><input class="inline-edit-input" id="ep_empno" value="${escHtml(p.employee_no||'')}" style="width:80px"></td>
+          <td>${p.eligible ? '<span class="badge badge-green">可抽</span>' : '<span class="badge badge-red">已中獎</span>'}</td>
+          <td>
+            <button class="btn btn-primary btn-sm" onclick="saveEditParticipant('${p.id}')">儲存</button>
+            <button class="btn btn-outline btn-sm" onclick="cancelEdit()">取消</button>
+          </td>
+        </tr>`;
+      }
+      return `<tr style="${!p.eligible ? 'background:#fff8e1' : ''}">
+        <td>${escHtml(p.name)}</td>
+        <td>${escHtml(p.department)}</td>
+        <td>${escHtml(p.employee_no || '—')}</td>
         <td>${p.eligible
           ? '<span class="badge badge-green">可抽</span>'
           : '<span class="badge badge-red">已中獎</span>'}</td>
         <td>
-          <button class="btn btn-outline btn-sm" onclick="editParticipant('${p.id}','${p.name}','${p.department}','${p.employee_no||''}')">編輯</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteParticipant('${p.id}','${p.name}')">刪除</button>
+          <button class="btn btn-outline btn-sm" onclick="startEditParticipant('${p.id}')">編輯</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteParticipant('${p.id}')">刪除</button>
         </td>
-      </tr>
-    `).join('');
+      </tr>`;
+    }).join('');
   }
 
   async function addParticipant() {
@@ -602,15 +627,20 @@
     }
   }
 
-  async function editParticipant(id, name, dept, empNo) {
-    const newName = prompt('姓名', name);
-    if (newName === null) return;
-    const newDept = prompt('部門', dept);
-    if (newDept === null) return;
-    const newEmpNo = prompt('員工編號', empNo);
-    if (newEmpNo === null) return;
+  function startEditParticipant(id) {
+    _editingParticipantId = id;
+    renderParticipants();
+    setTimeout(() => document.getElementById('ep_name')?.focus(), 50);
+  }
+
+  async function saveEditParticipant(id) {
+    const name = document.getElementById('ep_name').value.trim();
+    const dept = document.getElementById('ep_dept').value.trim();
+    const empNo = document.getElementById('ep_empno').value.trim();
+    if (!name || !dept) { showToast('姓名和部門為必填', 'error'); return; }
     try {
-      await Store.updateParticipant(id, { name: newName, department: newDept, employee_no: newEmpNo });
+      await Store.updateParticipant(id, { name, department: dept, employee_no: empNo });
+      _editingParticipantId = null;
       _allParticipants = await Store.getParticipants();
       renderParticipants();
       showToast('已更新', 'success');
@@ -619,7 +649,16 @@
     }
   }
 
-  async function deleteParticipant(id, name) {
+  function cancelEdit() {
+    _editingParticipantId = null;
+    _editingPrizeId = null;
+    renderParticipants();
+    renderPrizes();
+  }
+
+  async function deleteParticipant(id) {
+    const p = _allParticipants.find(x => x.id === id);
+    const name = p ? p.name : id;
     if (!confirm(`確定刪除「${name}」？`)) return;
     try {
       await Store.deleteParticipant(id);
@@ -656,21 +695,34 @@
 
   // ─── Prizes ──────────────────────────────────────────────
   function renderPrizes() {
-    document.getElementById('prizeTable').innerHTML = _allPrizes.map(p => `
-      <tr>
+    document.getElementById('prizeTable').innerHTML = _allPrizes.map(p => {
+      if (p.id === _editingPrizeId) {
+        return `<tr class="editing">
+          <td><input class="inline-edit-input" id="ep_sort" type="number" min="1" value="${p.sort_order}" style="width:60px"></td>
+          <td><input class="inline-edit-input" id="ep_pname" value="${escHtml(p.name)}" style="width:160px"></td>
+          <td><input class="inline-edit-input" id="ep_qty" type="number" min="${p.winners_drawn||1}" value="${p.quantity}" style="width:60px"></td>
+          <td>${p.winners_drawn} / ${p.quantity}</td>
+          <td>${p.active ? '<span class="badge badge-green">啟用</span>' : '<span class="badge badge-grey">停用</span>'}</td>
+          <td>
+            <button class="btn btn-primary btn-sm" onclick="saveEditPrize('${p.id}')">儲存</button>
+            <button class="btn btn-outline btn-sm" onclick="cancelEdit()">取消</button>
+          </td>
+        </tr>`;
+      }
+      return `<tr>
         <td>${p.sort_order}</td>
-        <td>${p.name}</td>
+        <td>${escHtml(p.name)}</td>
         <td>${p.quantity}</td>
         <td>${p.winners_drawn} / ${p.quantity}</td>
         <td>${p.active
           ? '<span class="badge badge-green">啟用</span>'
           : '<span class="badge badge-grey">停用</span>'}</td>
         <td>
-          <button class="btn btn-outline btn-sm" onclick="editPrize('${p.id}','${p.name}',${p.quantity},${p.sort_order})">編輯</button>
-          <button class="btn btn-danger btn-sm" onclick="deletePrize('${p.id}','${p.name}')">刪除</button>
+          <button class="btn btn-outline btn-sm" onclick="startEditPrize('${p.id}')">編輯</button>
+          <button class="btn btn-danger btn-sm" onclick="deletePrize('${p.id}')">刪除</button>
         </td>
-      </tr>
-    `).join('');
+      </tr>`;
+    }).join('');
   }
 
   async function addPrize() {
@@ -690,15 +742,20 @@
     }
   }
 
-  async function editPrize(id, name, qty, sort) {
-    const newName = prompt('獎品名稱', name);
-    if (newName === null) return;
-    const newQty = prompt('數量', qty);
-    if (newQty === null) return;
-    const newSort = prompt('排序', sort);
-    if (newSort === null) return;
+  function startEditPrize(id) {
+    _editingPrizeId = id;
+    renderPrizes();
+    setTimeout(() => document.getElementById('ep_pname')?.focus(), 50);
+  }
+
+  async function saveEditPrize(id) {
+    const name = document.getElementById('ep_pname').value.trim();
+    const qty = parseInt(document.getElementById('ep_qty').value);
+    const sort = parseInt(document.getElementById('ep_sort').value);
+    if (!name) { showToast('請填入獎品名稱', 'error'); return; }
     try {
-      await Store.updatePrize(id, { name: newName, quantity: parseInt(newQty), sort_order: parseInt(newSort) });
+      await Store.updatePrize(id, { name, quantity: qty, sort_order: sort });
+      _editingPrizeId = null;
       _allPrizes = await Store.getPrizes();
       renderPrizes();
       showToast('已更新', 'success');
@@ -707,7 +764,9 @@
     }
   }
 
-  async function deletePrize(id, name) {
+  async function deletePrize(id) {
+    const p = _allPrizes.find(x => x.id === id);
+    const name = p ? p.name : id;
     if (!confirm(`確定刪除「${name}」？`)) return;
     try {
       const r = await Store.deletePrize(id);
