@@ -181,6 +181,30 @@
       color: var(--gold); font-size: 1rem; text-align: center; font-family: inherit;
     }
 
+    /* ─── Batch overlay ─── */
+    #overlay.batch #overlayWinners {
+      flex-wrap: wrap; align-items: center; justify-content: center;
+    }
+    #overlay.batch .overlay-winner-card {
+      padding: 1rem 1.6rem; animation: none;
+      border: 1px solid rgba(255,215,0,.4);
+    }
+    #overlay.batch .overlay-winner-card .winner-name-big {
+      font-size: clamp(2rem, 5vw, 4rem);
+    }
+    #overlay.batch .overlay-winner-card .winner-dept {
+      font-size: clamp(.9rem, 2.5vw, 2rem);
+    }
+    #overlay.batch .overlay-winner-card .winner-empno {
+      font-size: clamp(.75rem, 1.5vw, 1.3rem);
+    }
+    /* Card appear animation */
+    @keyframes winnerAppear {
+      from { transform: scale(0.7) translateY(24px); opacity: 0; }
+      to   { transform: scale(1)   translateY(0);    opacity: 1; }
+    }
+    .winner-appear { animation: winnerAppear .5s cubic-bezier(.34,1.56,.64,1) forwards; }
+
     /* ─── Confetti ─── */
     .confetti-piece {
       position: fixed; width: 10px; height: 10px; top: -10px;
@@ -199,7 +223,7 @@
 <div id="loginScreen">
   <div class="login-box">
     <h1>🎊 抽獎系統</h1>
-    <p>輔仁大學附設醫院 114年尾牙</p>
+    <p>輔仁大學附設醫院 115年尾牙</p>
     <input type="password" id="pwInput" placeholder="請輸入密碼" autofocus>
     <button onclick="doLogin()">進入抽獎</button>
     <div id="loginError"></div>
@@ -209,7 +233,7 @@
 <!-- ─── App ─── -->
 <div id="app">
   <header>
-    <h1>🎊 輔仁大學附設醫院 114年尾牙抽獎 🎊</h1>
+    <h1>🎊 輔仁大學附設醫院 115年尾牙抽獎 🎊</h1>
     <p id="eligibleCount">載入中…</p>
   </header>
   <main>
@@ -256,12 +280,20 @@
   let _results = [];
   let _eligible = [];
   let _marqueeInterval = null;
-  let _pendingResult = null;
   let _overlayTimer = null;
   let _isDrawing = false;
   let _isAnimating = false;
   let _batchResults = [];
-  let _batchIndex = 0;
+  let _batchAddActive = false;
+
+  // ─── Utility ──────────────────────────────────────────────
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
 
   // ─── Auth ────────────────────────────────────────────────
   async function doLogin() {
@@ -299,24 +331,15 @@
     Store.subscribeResults(async () => {
       _results = await Store.getResults();
       _eligible = await Store.getEligible();
-      // 動畫進行中時不更新結果列表，等 overlay 關閉後由 loadAll() 更新
-      if (!_isAnimating) {
-        renderResultsList();
-        updateEligibleCount();
-        onPrizeChange();
-      }
+      if (!_isAnimating) { renderResultsList(); updateEligibleCount(); onPrizeChange(); }
     });
     Store.subscribePrizes(async () => {
       _prizes = await Store.getPrizes();
       renderPrizeSelect();
     });
-    // 後台新增/刪除人員時即時更新可抽人數
     Store.subscribeParticipants(async () => {
       _eligible = await Store.getEligible();
-      if (!_isAnimating) {
-        updateEligibleCount();
-        onPrizeChange();
-      }
+      if (!_isAnimating) { updateEligibleCount(); onPrizeChange(); }
     });
   }
 
@@ -339,48 +362,30 @@
     const prizeId = document.getElementById('prizeSelect').value;
     const btn = document.getElementById('drawBtn');
     const msg = document.getElementById('statusMsg');
-    const wrap = document.getElementById('marqueeWrap');
 
-    if (!prizeId) {
-      btn.disabled = true;
-      setMarqueeIdle('請選擇獎項');
-      msg.textContent = '';
-      return;
-    }
+    if (!prizeId) { btn.disabled = true; setMarqueeIdle('請選擇獎項'); msg.textContent = ''; return; }
 
     const prize = _prizes.find(p => p.id === prizeId);
     if (!prize) return;
 
     const remaining = prize.quantity - prize.winners_drawn;
-    if (remaining <= 0) {
-      btn.disabled = true;
-      msg.textContent = '此獎項已抽完';
-      setMarqueeIdle('已抽完');
-      return;
-    }
-
-    if (_eligible.length === 0) {
-      btn.disabled = true;
-      msg.textContent = '所有人員已抽完';
-      setMarqueeIdle('無可抽人員');
-      return;
-    }
+    if (remaining <= 0) { btn.disabled = true; msg.textContent = '此獎項已抽完'; setMarqueeIdle('已抽完'); return; }
+    if (_eligible.length === 0) { btn.disabled = true; msg.textContent = '所有人員已抽完'; setMarqueeIdle('無可抽人員'); return; }
 
     btn.disabled = false;
     msg.textContent = `可抽 ${_eligible.length} 人 ／ 剩餘 ${remaining} 名`;
-    wrap.classList.remove('idle');
+    document.getElementById('marqueeWrap').classList.remove('idle');
     document.getElementById('marqueeText').textContent = '按下按鈕開始';
-    // 批次人數上限 = 可抽人數 與 剩餘名額 中的較小值
+
     const batchInput = document.getElementById('batchCount');
     const maxBatch = Math.min(_eligible.length, remaining);
     batchInput.max = maxBatch;
     if (parseInt(batchInput.value) > maxBatch) batchInput.value = maxBatch;
   }
 
-  function setMarqueeIdle(msg) {
-    const wrap = document.getElementById('marqueeWrap');
-    wrap.classList.add('idle');
-    document.getElementById('marqueeText').textContent = msg;
+  function setMarqueeIdle(text) {
+    document.getElementById('marqueeWrap').classList.add('idle');
+    document.getElementById('marqueeText').textContent = text;
   }
 
   // ─── Draw ────────────────────────────────────────────────
@@ -393,129 +398,170 @@
     _isDrawing = true;
     _isAnimating = true;
     document.getElementById('drawBtn').disabled = true;
-    document.getElementById('statusMsg').textContent = '抽獎中…';
+    document.getElementById('statusMsg').textContent = '';
 
-    // 先一次抽完，消除 DB 等待的空白期
-    const results = [];
-    for (let i = 0; i < batchCount; i++) {
-      const r = await Store.draw(prizeId);
-      if (r) results.push(r);
-      else break;
+    if (batchCount === 1) {
+      // ── 單人：立即啟動滾動動畫，同步觸發 DB 抽獎 ──
+      document.getElementById('marqueeWrap').classList.remove('idle');
+      const namePool = shuffle(_eligible.map(p => p.name));
+      const drawPromise = Store.draw(prizeId);
+
+      runMarqueeWithPromise(namePool, drawPromise, (result) => {
+        if (!result) {
+          _isDrawing = false; _isAnimating = false;
+          document.getElementById('drawBtn').disabled = false;
+          document.getElementById('statusMsg').textContent = '抽獎失敗，請重試';
+          setMarqueeIdle('抽獎失敗');
+          return;
+        }
+        _batchResults = [result];
+        showSingleOverlay(result);
+      });
+
+    } else {
+      // ── 批次：抽完後直接在畫面上依序揭曉，不跑滾動動畫 ──
+      document.getElementById('statusMsg').textContent = `批次抽獎（${batchCount} 人）中…`;
+      const results = [];
+      for (let i = 0; i < batchCount; i++) {
+        const r = await Store.draw(prizeId);
+        if (r) results.push(r); else break;
+      }
+      document.getElementById('statusMsg').textContent = '';
+      if (results.length === 0) {
+        _isDrawing = false; _isAnimating = false;
+        document.getElementById('drawBtn').disabled = false;
+        document.getElementById('statusMsg').textContent = '抽獎失敗，請重試';
+        return;
+      }
+      _batchResults = results;
+      showBatchOverlay(results);
     }
-
-    if (results.length === 0) {
-      _isDrawing = false;
-      _isAnimating = false;
-      document.getElementById('drawBtn').disabled = false;
-      document.getElementById('statusMsg').textContent = '抽獎失敗，請重試';
-      return;
-    }
-
-    // 逐一播放揭曉動畫
-    _batchResults = results;
-    _batchIndex = 0;
-    revealNext();
   }
 
-  function revealNext() {
-    if (_batchIndex >= _batchResults.length) { closeOverlay(); return; }
-    const result = _batchResults[_batchIndex];
-    const displayList = buildMarqueeList(result.participant_name);
-    runMarqueeAnimation(displayList, result, () => {
-      showOverlay(result, _batchIndex + 1, _batchResults.length);
-    });
+  // ── 滾動動畫：立即開始，等 DB 結果回來後減速收尾 ──
+  function runMarqueeWithPromise(namePool, drawPromise, onDone) {
+    const el = document.getElementById('marqueeText');
+    if (_marqueeInterval) clearInterval(_marqueeInterval);
+
+    let pool = [...namePool];
+    let poolIdx = 0;
+    let intervalMs = 50;
+    let elapsed = 0;
+    let drawResult = undefined; // undefined=pending, null=failed
+    let revealing = false;
+
+    drawPromise.then(r => { drawResult = r; }).catch(() => { drawResult = null; });
+
+    function nextName() {
+      if (poolIdx >= pool.length) { pool = shuffle([...namePool]); poolIdx = 0; } // 重洗避免重複
+      return pool[poolIdx++];
+    }
+
+    function tick() {
+      el.textContent = nextName();
+      elapsed += intervalMs;
+
+      // 至少滾 1500ms 且 DB 已回傳 → 減速收尾
+      if (!revealing && elapsed >= 1500 && drawResult !== undefined) {
+        revealing = true;
+        clearInterval(_marqueeInterval);
+        slowReveal(nextName, drawResult, el, onDone);
+        return;
+      }
+      // DB 還沒回來但已超 1500ms → 稍降速，保持視覺等待感
+      if (!revealing && elapsed > 1500 && drawResult === undefined && intervalMs < 150) {
+        intervalMs = 150;
+        clearInterval(_marqueeInterval);
+        _marqueeInterval = setInterval(tick, intervalMs);
+      }
+    }
+
+    _marqueeInterval = setInterval(tick, intervalMs);
   }
 
-  function advanceToNext() {
+  function slowReveal(nextName, result, el, onDone) {
+    const steps = [120, 180, 260, 360, 460];
+    let i = 0;
+    function step() {
+      if (i < steps.length) {
+        el.textContent = nextName();
+        setTimeout(step, steps[i++]);
+      } else {
+        el.textContent = result ? result.participant_name : '—';
+        setTimeout(() => onDone(result), 350);
+      }
+    }
+    step();
+  }
+
+  // ─── Single Overlay ───────────────────────────────────────
+  function showSingleOverlay(result) {
+    document.getElementById('overlayPrize').textContent = '🎁 ' + result.prize_name;
+    document.getElementById('overlayWinners').innerHTML = `
+      <div class="overlay-winner-card winner-appear">
+        <div class="winner-name-big">${result.participant_name}</div>
+        <div class="winner-dept">${result.participant_dept}</div>
+        ${result.participant_employee_no
+          ? `<div class="winner-empno">員工編號：${result.participant_employee_no}</div>` : ''}
+      </div>`;
+    document.getElementById('overlayProgress').textContent = '';
+    document.getElementById('overlayHint').textContent = '點擊任意處關閉';
+
+    const ov = document.getElementById('overlay');
+    ov.classList.remove('batch'); ov.classList.add('show');
+    launchConfetti();
     if (_overlayTimer) clearTimeout(_overlayTimer);
-    document.getElementById('overlay').classList.remove('show');
-    _batchIndex++;
-    setTimeout(revealNext, 350);
+    _overlayTimer = setTimeout(closeOverlay, 5000);
+  }
+
+  // ─── Batch Overlay ────────────────────────────────────────
+  function showBatchOverlay(results) {
+    _batchAddActive = true;
+    document.getElementById('overlayPrize').textContent = '🎁 ' + results[0].prize_name;
+    const container = document.getElementById('overlayWinners');
+    container.innerHTML = '';
+    document.getElementById('overlayProgress').textContent = `共 ${results.length} 位得獎者`;
+    document.getElementById('overlayHint').textContent = '';
+
+    const ov = document.getElementById('overlay');
+    ov.classList.add('show', 'batch');
+
+    let i = 0;
+    function addNext() {
+      if (!_batchAddActive) return;
+      if (i >= results.length) {
+        document.getElementById('overlayHint').textContent = '點擊任意處關閉';
+        launchConfetti();
+        if (_overlayTimer) clearTimeout(_overlayTimer);
+        _overlayTimer = setTimeout(closeOverlay, 6000);
+        return;
+      }
+      const r = results[i++];
+      const card = document.createElement('div');
+      card.className = 'overlay-winner-card winner-appear';
+      card.innerHTML = `
+        <div class="winner-name-big">${r.participant_name}</div>
+        <div class="winner-dept">${r.participant_dept}</div>
+        ${r.participant_employee_no ? `<div class="winner-empno">員工編號：${r.participant_employee_no}</div>` : ''}`;
+      container.appendChild(card);
+      launchConfetti();
+      setTimeout(addNext, 900);
+    }
+    addNext();
   }
 
   function handleOverlayClick() {
     if (_overlayTimer) clearTimeout(_overlayTimer);
-    const isLast = _batchIndex + 1 >= _batchResults.length;
-    if (isLast) closeOverlay();
-    else advanceToNext();
-  }
-
-  function buildMarqueeList(winnerName) {
-    const names = _eligible.map(p => p.name).filter(n => n !== winnerName);
-    const shuffled = names.sort(() => Math.random() - .5).slice(0, 19);
-    shuffled.push(winnerName);
-    return shuffled.sort(() => Math.random() - .5);
-  }
-
-  function runMarqueeAnimation(names, result, onDone) {
-    const el = document.getElementById('marqueeText');
-    let interval = 50;
-    let elapsed = 0;
-    const totalDuration = 2800;
-    const slowStart = 1800;
-    let idx = 0;
-
-    if (_marqueeInterval) clearInterval(_marqueeInterval);
-
-    function tick() {
-      el.textContent = names[idx % names.length];
-      idx++;
-      elapsed += interval;
-
-      if (elapsed >= totalDuration) {
-        clearInterval(_marqueeInterval);
-        el.textContent = result.participant_name;
-        setTimeout(onDone, 300);
-        return;
-      }
-
-      if (elapsed > slowStart) {
-        interval = Math.min(interval + 25, 400);
-        clearInterval(_marqueeInterval);
-        _marqueeInterval = setInterval(tick, interval);
-      }
-    }
-
-    _marqueeInterval = setInterval(tick, interval);
-  }
-
-  // ─── Overlay ─────────────────────────────────────────────
-  function showOverlay(result, current, total) {
-    document.getElementById('overlayPrize').textContent = '🎁 ' + result.prize_name;
-
-    document.getElementById('overlayWinners').innerHTML = `
-      <div class="overlay-winner-card">
-        <div class="winner-name-big">${result.participant_name}</div>
-        <div class="winner-dept">${result.participant_dept}</div>
-        ${result.participant_employee_no
-          ? `<div class="winner-empno">員工編號：${result.participant_employee_no}</div>`
-          : ''}
-      </div>
-    `;
-
-    const isLast = current >= total;
-    document.getElementById('overlayProgress').textContent =
-      total > 1 ? `第 ${current} 位 / 共 ${total} 位` : '';
-    document.getElementById('overlayHint').textContent =
-      isLast ? '點擊任意處關閉' : '點擊繼續下一位 →';
-
-    document.getElementById('overlay').classList.add('show');
-    launchConfetti();
-
-    if (_overlayTimer) clearTimeout(_overlayTimer);
-    // 最後一位停留 5 秒，中間每位停留 3 秒後自動前進
-    _overlayTimer = setTimeout(() => {
-      if (isLast) closeOverlay(); else advanceToNext();
-    }, isLast ? 5000 : 3000);
+    closeOverlay();
   }
 
   function closeOverlay() {
-    document.getElementById('overlay').classList.remove('show');
+    _batchAddActive = false;
+    document.getElementById('overlay').classList.remove('show', 'batch');
     if (_overlayTimer) clearTimeout(_overlayTimer);
     _isAnimating = false;
     _isDrawing = false;
     _batchResults = [];
-    _batchIndex = 0;
     loadAll();
   }
 
@@ -540,7 +586,6 @@
     const active = _results.filter(r => !r.revoked);
     const revoked = _results.filter(r => r.revoked);
     const all = [...active, ...revoked];
-
     el.innerHTML = all.length === 0
       ? '<div style="text-align:center;opacity:.4;padding:2rem;font-size:.9rem">尚未抽出任何獎項</div>'
       : all.map(r => `
@@ -553,8 +598,7 @@
           ${!r.revoked
             ? `<button class="btn-revoke" onclick="revokeResult('${r.id}','${r.participant_name}')">重抽</button>`
             : '<span style="font-size:.75rem;color:#ff9999">已重抽</span>'}
-        </div>
-      `).join('');
+        </div>`).join('');
   }
 
   async function revokeResult(id, name) {
