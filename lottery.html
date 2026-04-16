@@ -97,37 +97,6 @@
     .marquee-wrap.idle #marqueeText { color: rgba(255,215,0,.3); }
     #statusMsg { text-align: center; font-size: .95rem; color: rgba(255,228,181,.7); min-height: 1.4em; }
 
-    /* ─── Slot Machine ─── */
-    #slotDisplay {
-      display: none; align-items: center; justify-content: center;
-      gap: clamp(1rem, 3vw, 2.5rem); pointer-events: none;
-    }
-    #slotDisplay.active { display: flex; }
-    .slot-reel {
-      width: clamp(130px, 22vw, 260px); height: clamp(150px, 25vw, 300px);
-      border: 4px solid rgba(255,215,0,.5); border-radius: 20px;
-      background: rgba(0,0,0,.45);
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 0 18px rgba(255,215,0,.2), inset 0 0 18px rgba(0,0,0,.5);
-      transition: box-shadow .3s, border-color .3s;
-    }
-    .slot-reel.landed {
-      border-color: var(--gold);
-      box-shadow: 0 0 60px rgba(255,215,0,.8), inset 0 0 18px rgba(255,215,0,.1);
-    }
-    .slot-sym {
-      font-size: clamp(4rem, 11vw, 10rem); font-weight: 900; line-height: 1;
-      color: var(--gold); text-shadow: 0 0 28px rgba(255,215,0,.8);
-      user-select: none; display: block;
-    }
-    .slot-reel.landed .slot-sym {
-      animation: slotBounce .4s cubic-bezier(.34,1.56,.64,1) forwards;
-    }
-    @keyframes slotBounce {
-      0%   { transform: scale(1.5); }
-      100% { transform: scale(1); }
-    }
-
     /* ─── Right: Results list ─── */
     .results-panel {
       background: rgba(255,255,255,.04); border: 1px solid rgba(255,215,0,.15);
@@ -272,11 +241,6 @@
       </div>
       <div class="marquee-wrap idle" id="marqueeWrap" onclick="startDraw()">
         <div id="marqueeText">請選擇獎項</div>
-        <div id="slotDisplay">
-          <div class="slot-reel" id="slotReel1"><span class="slot-sym" id="slotSym1">❓</span></div>
-          <div class="slot-reel" id="slotReel2"><span class="slot-sym" id="slotSym2">❓</span></div>
-          <div class="slot-reel" id="slotReel3"><span class="slot-sym" id="slotSym3">❓</span></div>
-        </div>
       </div>
       <div id="statusMsg"></div>
       <div class="batch-row">
@@ -440,7 +404,7 @@
     wrap.classList.remove('idle');
     wrap.classList.add('drawing');
 
-    // 所有 DB 抽獎在背景同步執行
+    // DB 抽獎在背景同步執行
     const drawPromise = (async () => {
       const results = [];
       for (let i = 0; i < batchCount; i++) {
@@ -451,11 +415,9 @@
     })();
 
     const finish = (results) => {
-      document.getElementById('statusMsg').textContent = '';
       if (!results || results.length === 0) {
         _isDrawing = false; _isAnimating = false;
         wrap.classList.remove('drawing');
-        resetSlotDisplay();
         document.getElementById('statusMsg').textContent = '抽獎失敗，請重試';
         setMarqueeIdle('抽獎失敗');
         return;
@@ -465,109 +427,62 @@
       else showBatchOverlay(results);
     };
 
-    if (batchCount === 1) {
-      // 單人：老虎機，停在中獎者名字各字
-      runSlotAnimation(drawPromise,
-        (results) => getNameSymbols(results[0]?.participant_name || ''),
-        finish);
-    } else {
-      // 批次：老虎機，停在 7 7 7
-      runSlotAnimation(drawPromise,
-        () => ['7', '7', '7'],
-        finish);
-    }
+    runMarqueeAnimation(drawPromise, batchCount, finish);
   }
 
-  // 將姓名拆成三格：前兩字各一格，第三格放剩餘字（不足補 ★）
-  function getNameSymbols(name) {
-    const chars = [...name]; // 正確處理 Unicode 字元
-    if (chars.length === 0) return ['?', '?', '?'];
-    if (chars.length === 1) return [chars[0], '★', '★'];
-    if (chars.length === 2) return [chars[0], chars[1], '★'];
-    return [chars[0], chars[1], chars.slice(2).join('')];
-  }
-
-  // ── 老虎機動畫（單人與批次通用）─────────────────────────
-  // getFinalSymbols(results) → ['字1','字2','字3']
-  function runSlotAnimation(drawPromise, getFinalSymbols, onDone) {
-    const SYMBOLS = ['❓', '⭐', '7', '♦', '♣', '♥', '♠', '💎'];
-
+  // ── 滾動名單動畫 ─────────────────────────────────────────
+  function runMarqueeAnimation(drawPromise, batchCount, onDone) {
     const marqueeText = document.getElementById('marqueeText');
-    const slotDisplay = document.getElementById('slotDisplay');
-    const reelEls = [
-      document.getElementById('slotReel1'),
-      document.getElementById('slotReel2'),
-      document.getElementById('slotReel3')
-    ];
-    const symEls = [
-      document.getElementById('slotSym1'),
-      document.getElementById('slotSym2'),
-      document.getElementById('slotSym3')
-    ];
 
-    // Init
-    marqueeText.style.display = 'none';
-    reelEls.forEach(r => r.classList.remove('landed'));
-    symEls.forEach(s => { s.textContent = '❓'; s.style.fontSize = ''; });
-    slotDisplay.classList.add('active');
+    // 準備打亂的姓名池
+    let pool = shuffle(_eligible.map(p => p.name));
+    let poolIdx = 0;
+    function nextName() {
+      if (poolIdx >= pool.length) { pool = shuffle([...pool]); poolIdx = 0; }
+      return pool[poolIdx++];
+    }
 
     let drawResults = undefined;
     drawPromise
       .then(r => { drawResults = Array.isArray(r) ? r : (r ? [r] : []); })
       .catch(() => { drawResults = []; });
 
-    // 三個轉輪略微不同速度
-    const reelTimers = symEls.map((sym, i) =>
-      setInterval(() => {
-        sym.textContent = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
-      }, 55 + i * 15)
-    );
-
-    // 等待 DB + 最少 1500ms
     let elapsed = 0;
-    if (_marqueeInterval) clearInterval(_marqueeInterval);
-    _marqueeInterval = setInterval(() => {
-      elapsed += 80;
+    const FAST = 50; // ms per frame at full speed
+
+    function fastTick() {
+      marqueeText.textContent = nextName();
+      elapsed += FAST;
       if (elapsed >= 1500 && drawResults !== undefined) {
-        clearInterval(_marqueeInterval);
-        const finals = getFinalSymbols(drawResults);
-
-        // 依序停止三個轉輪，每格間隔 420ms
-        [0, 1, 2].forEach(i => {
-          setTimeout(() => {
-            clearInterval(reelTimers[i]);
-            symEls[i].textContent = finals[i] || '★';
-            // 第三格若超過一個字，自動縮小字型
-            if ((finals[i] || '').length > 1) {
-              symEls[i].style.fontSize =
-                finals[i].length >= 3
-                  ? 'clamp(1.8rem, 4.5vw, 4.2rem)'
-                  : 'clamp(2.6rem, 6.5vw, 6rem)';
-            }
-            reelEls[i].classList.add('landed');
-
-            if (i === 2) {
-              setTimeout(() => {
-                resetSlotDisplay();
-                onDone(drawResults);
-              }, 700);
-            }
-          }, i * 420);
-        });
+        slowDown(drawResults);
+      } else {
+        _marqueeInterval = setTimeout(fastTick, FAST);
       }
-    }, 80);
-  }
+    }
 
-  function resetSlotDisplay() {
-    const marqueeText = document.getElementById('marqueeText');
-    marqueeText.style.display = '';
-    document.getElementById('slotDisplay').classList.remove('active');
-    ['slotReel1','slotReel2','slotReel3'].forEach(id =>
-      document.getElementById(id).classList.remove('landed')
-    );
-    ['slotSym1','slotSym2','slotSym3'].forEach(id => {
-      document.getElementById(id).style.fontSize = '';
-    });
+    // 緩速階段：逐步加大間隔，最後停在目標文字
+    function slowDown(results) {
+      const targetName = results.length === 1
+        ? results[0].participant_name
+        : `🎉 抽出 ${results.length} 位`;
+
+      const steps = [80, 120, 170, 220, 270, 320, 360, 400];
+      let step = 0;
+
+      function slowTick() {
+        if (step < steps.length - 1) {
+          marqueeText.textContent = nextName();
+          _marqueeInterval = setTimeout(slowTick, steps[step++]);
+        } else {
+          // 停在目標
+          marqueeText.textContent = targetName;
+          setTimeout(() => onDone(results), 450);
+        }
+      }
+      slowTick();
+    }
+
+    _marqueeInterval = setTimeout(fastTick, FAST);
   }
 
   // ─── Single Overlay ───────────────────────────────────────
@@ -633,9 +548,9 @@
 
   function closeOverlay() {
     _batchAddActive = false;
+    if (_marqueeInterval) { clearTimeout(_marqueeInterval); _marqueeInterval = null; }
     document.getElementById('overlay').classList.remove('show', 'batch');
     document.getElementById('marqueeWrap').classList.remove('drawing');
-    resetSlotDisplay();
     if (_overlayTimer) clearTimeout(_overlayTimer);
     _isAnimating = false;
     _isDrawing = false;
