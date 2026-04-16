@@ -79,27 +79,22 @@
       border: 2px solid rgba(255,215,0,.2); border-radius: 16px;
       display: flex; align-items: center; justify-content: center;
       overflow: hidden; position: relative; min-height: 200px;
+      transition: border-color .2s, background .2s;
     }
+    .marquee-wrap:not(.idle):not(.drawing) { cursor: pointer; }
+    .marquee-wrap:not(.idle):not(.drawing):hover {
+      border-color: rgba(255,215,0,.6);
+      background: rgba(255,255,255,.07);
+    }
+    .marquee-wrap:not(.idle):not(.drawing):active { background: rgba(255,215,0,.06); }
+    .marquee-wrap.drawing { cursor: default; }
     #marqueeText {
       font-size: clamp(2rem, 5vw, 4rem);
       font-weight: 900; color: var(--gold);
       text-shadow: 0 0 30px rgba(255,215,0,.6);
-      transition: none; user-select: none;
+      transition: none; user-select: none; pointer-events: none;
     }
     .marquee-wrap.idle #marqueeText { color: rgba(255,215,0,.3); }
-
-    /* ─── Draw Button ─── */
-    #drawBtn {
-      padding: 1.2rem; font-size: clamp(1.2rem, 2.5vw, 1.8rem); font-weight: 900;
-      background: linear-gradient(135deg, var(--gold), #ff8c00);
-      color: #1a0a0a; border: none; border-radius: 14px; cursor: pointer;
-      font-family: inherit; letter-spacing: .05em;
-      box-shadow: 0 4px 20px rgba(255,215,0,.3);
-      transition: transform .1s, box-shadow .1s;
-    }
-    #drawBtn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(255,215,0,.5); }
-    #drawBtn:active:not(:disabled) { transform: translateY(0); }
-    #drawBtn:disabled { opacity: .4; cursor: not-allowed; }
     #statusMsg { text-align: center; font-size: .95rem; color: rgba(255,228,181,.7); min-height: 1.4em; }
 
     /* ─── Right: Results list ─── */
@@ -244,15 +239,14 @@
           <option value="">— 請選擇獎項 —</option>
         </select>
       </div>
-      <div class="marquee-wrap idle" id="marqueeWrap">
+      <div class="marquee-wrap idle" id="marqueeWrap" onclick="startDraw()">
         <div id="marqueeText">請選擇獎項</div>
       </div>
       <div id="statusMsg"></div>
       <div class="batch-row">
         <label for="batchCount">批次人數：</label>
-        <input type="number" id="batchCount" min="1" max="50" value="1">
+        <input type="number" id="batchCount" min="1" max="50" value="1" onclick="event.stopPropagation()">
       </div>
-      <button id="drawBtn" onclick="startDraw()" disabled>開始抽獎</button>
     </div>
 
     <!-- Right -->
@@ -314,6 +308,13 @@
     if (e.key === 'Enter') doLogin();
   });
 
+  // Enter 鍵觸發抽獎（登入後）
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && document.getElementById('app').style.display !== 'none') {
+      startDraw();
+    }
+  });
+
   // ─── Load ────────────────────────────────────────────────
   async function loadAll() {
     [_prizes, _results, _eligible] = await Promise.all([
@@ -360,22 +361,21 @@
 
   function onPrizeChange() {
     const prizeId = document.getElementById('prizeSelect').value;
-    const btn = document.getElementById('drawBtn');
     const msg = document.getElementById('statusMsg');
+    const wrap = document.getElementById('marqueeWrap');
 
-    if (!prizeId) { btn.disabled = true; setMarqueeIdle('請選擇獎項'); msg.textContent = ''; return; }
+    if (!prizeId) { setMarqueeIdle('請選擇獎項'); msg.textContent = ''; return; }
 
     const prize = _prizes.find(p => p.id === prizeId);
     if (!prize) return;
 
     const remaining = prize.quantity - prize.winners_drawn;
-    if (remaining <= 0) { btn.disabled = true; msg.textContent = '此獎項已抽完'; setMarqueeIdle('已抽完'); return; }
-    if (_eligible.length === 0) { btn.disabled = true; msg.textContent = '所有人員已抽完'; setMarqueeIdle('無可抽人員'); return; }
+    if (remaining <= 0) { msg.textContent = '此獎項已抽完'; setMarqueeIdle('已抽完'); return; }
+    if (_eligible.length === 0) { msg.textContent = '所有人員已抽完'; setMarqueeIdle('無可抽人員'); return; }
 
-    btn.disabled = false;
     msg.textContent = `可抽 ${_eligible.length} 人 ／ 剩餘 ${remaining} 名`;
-    document.getElementById('marqueeWrap').classList.remove('idle');
-    document.getElementById('marqueeText').textContent = '按下按鈕開始';
+    wrap.classList.remove('idle', 'drawing');
+    document.getElementById('marqueeText').textContent = '點擊或按 Enter 開始';
 
     const batchInput = document.getElementById('batchCount');
     const maxBatch = Math.min(_eligible.length, remaining);
@@ -389,56 +389,49 @@
   }
 
   // ─── Draw ────────────────────────────────────────────────
-  async function startDraw() {
+  function startDraw() {
     if (_isDrawing) return;
     const prizeId = document.getElementById('prizeSelect').value;
     if (!prizeId) return;
+    const wrap = document.getElementById('marqueeWrap');
+    if (wrap.classList.contains('idle')) return;
+
     const batchCount = Math.max(1, parseInt(document.getElementById('batchCount').value) || 1);
 
     _isDrawing = true;
     _isAnimating = true;
-    document.getElementById('drawBtn').disabled = true;
-    document.getElementById('statusMsg').textContent = '';
+    document.getElementById('statusMsg').textContent =
+      batchCount > 1 ? `批次抽獎（${batchCount} 人）中…` : '';
+    wrap.classList.remove('idle');
+    wrap.classList.add('drawing');
 
-    if (batchCount === 1) {
-      // ── 單人：立即啟動滾動動畫，同步觸發 DB 抽獎 ──
-      document.getElementById('marqueeWrap').classList.remove('idle');
-      const namePool = shuffle(_eligible.map(p => p.name));
-      const drawPromise = Store.draw(prizeId);
-
-      runMarqueeWithPromise(namePool, drawPromise, (result) => {
-        if (!result) {
-          _isDrawing = false; _isAnimating = false;
-          document.getElementById('drawBtn').disabled = false;
-          document.getElementById('statusMsg').textContent = '抽獎失敗，請重試';
-          setMarqueeIdle('抽獎失敗');
-          return;
-        }
-        _batchResults = [result];
-        showSingleOverlay(result);
-      });
-
-    } else {
-      // ── 批次：抽完後直接在畫面上依序揭曉，不跑滾動動畫 ──
-      document.getElementById('statusMsg').textContent = `批次抽獎（${batchCount} 人）中…`;
+    // 立即開始動畫，同步觸發所有 DB 抽獎（單人或批次統一處理）
+    const namePool = shuffle(_eligible.map(p => p.name));
+    const drawPromise = (async () => {
       const results = [];
       for (let i = 0; i < batchCount; i++) {
         const r = await Store.draw(prizeId);
         if (r) results.push(r); else break;
       }
+      return results;
+    })();
+
+    runMarqueeWithPromise(namePool, drawPromise, (results) => {
       document.getElementById('statusMsg').textContent = '';
-      if (results.length === 0) {
+      if (!results || results.length === 0) {
         _isDrawing = false; _isAnimating = false;
-        document.getElementById('drawBtn').disabled = false;
+        wrap.classList.remove('drawing');
         document.getElementById('statusMsg').textContent = '抽獎失敗，請重試';
+        setMarqueeIdle('抽獎失敗');
         return;
       }
       _batchResults = results;
-      showBatchOverlay(results);
-    }
+      if (results.length === 1) showSingleOverlay(results[0]);
+      else showBatchOverlay(results);
+    });
   }
 
-  // ── 滾動動畫：立即開始，等 DB 結果回來後減速收尾 ──
+  // 立即開始滾動，DB 結果回來後減速收尾（單人或批次通用）
   function runMarqueeWithPromise(namePool, drawPromise, onDone) {
     const el = document.getElementById('marqueeText');
     if (_marqueeInterval) clearInterval(_marqueeInterval);
@@ -447,13 +440,15 @@
     let poolIdx = 0;
     let intervalMs = 50;
     let elapsed = 0;
-    let drawResult = undefined; // undefined=pending, null=failed
+    let drawResults = undefined; // undefined=pending
     let revealing = false;
 
-    drawPromise.then(r => { drawResult = r; }).catch(() => { drawResult = null; });
+    drawPromise
+      .then(r => { drawResults = Array.isArray(r) ? r : (r ? [r] : []); })
+      .catch(() => { drawResults = []; });
 
     function nextName() {
-      if (poolIdx >= pool.length) { pool = shuffle([...namePool]); poolIdx = 0; } // 重洗避免重複
+      if (poolIdx >= pool.length) { pool = shuffle([...namePool]); poolIdx = 0; }
       return pool[poolIdx++];
     }
 
@@ -461,15 +456,16 @@
       el.textContent = nextName();
       elapsed += intervalMs;
 
-      // 至少滾 1500ms 且 DB 已回傳 → 減速收尾
-      if (!revealing && elapsed >= 1500 && drawResult !== undefined) {
+      // 至少滾 1500ms 且 DB 已全部回傳 → 減速收尾
+      if (!revealing && elapsed >= 1500 && drawResults !== undefined) {
         revealing = true;
         clearInterval(_marqueeInterval);
-        slowReveal(nextName, drawResult, el, onDone);
+        const last = drawResults.length > 0 ? drawResults[drawResults.length - 1] : null;
+        slowReveal(nextName, last, el, () => onDone(drawResults));
         return;
       }
       // DB 還沒回來但已超 1500ms → 稍降速，保持視覺等待感
-      if (!revealing && elapsed > 1500 && drawResult === undefined && intervalMs < 150) {
+      if (!revealing && elapsed > 1500 && drawResults === undefined && intervalMs < 150) {
         intervalMs = 150;
         clearInterval(_marqueeInterval);
         _marqueeInterval = setInterval(tick, intervalMs);
@@ -479,7 +475,7 @@
     _marqueeInterval = setInterval(tick, intervalMs);
   }
 
-  function slowReveal(nextName, result, el, onDone) {
+  function slowReveal(nextName, lastResult, el, onDone) {
     const steps = [120, 180, 260, 360, 460];
     let i = 0;
     function step() {
@@ -487,8 +483,8 @@
         el.textContent = nextName();
         setTimeout(step, steps[i++]);
       } else {
-        el.textContent = result ? result.participant_name : '—';
-        setTimeout(() => onDone(result), 350);
+        el.textContent = lastResult ? lastResult.participant_name : '—';
+        setTimeout(onDone, 350);
       }
     }
     step();
@@ -558,6 +554,7 @@
   function closeOverlay() {
     _batchAddActive = false;
     document.getElementById('overlay').classList.remove('show', 'batch');
+    document.getElementById('marqueeWrap').classList.remove('drawing');
     if (_overlayTimer) clearTimeout(_overlayTimer);
     _isAnimating = false;
     _isDrawing = false;
