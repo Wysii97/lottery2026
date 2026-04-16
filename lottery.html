@@ -274,6 +274,7 @@
   let _results = [];
   let _eligible = [];
   let _marqueeInterval = null;
+  let _previewInterval = null;
   let _overlayTimer = null;
   let _isDrawing = false;
   let _isAnimating = false;
@@ -375,7 +376,7 @@
 
     msg.textContent = `可抽 ${_eligible.length} 人 ／ 剩餘 ${remaining} 名`;
     wrap.classList.remove('idle', 'drawing');
-    document.getElementById('marqueeText').textContent = '點擊或按 Enter 開始';
+    startNamePreview();
 
     const batchInput = document.getElementById('batchCount');
     const maxBatch = Math.min(_eligible.length, remaining);
@@ -384,8 +385,28 @@
   }
 
   function setMarqueeIdle(text) {
+    stopNamePreview();
     document.getElementById('marqueeWrap').classList.add('idle');
     document.getElementById('marqueeText').textContent = text;
+  }
+
+  // ── 慢速預覽：選好獎項後在背景慢慢滾名字 ────────────────
+  function startNamePreview() {
+    stopNamePreview();
+    if (_eligible.length === 0) return;
+    let pool = shuffle(_eligible.map(p => p.name));
+    let idx = 0;
+    const marqueeText = document.getElementById('marqueeText');
+    function tick() {
+      if (idx >= pool.length) { pool = shuffle([...pool]); idx = 0; }
+      marqueeText.textContent = pool[idx++];
+      _previewInterval = setTimeout(tick, 700);
+    }
+    tick();
+  }
+
+  function stopNamePreview() {
+    if (_previewInterval) { clearTimeout(_previewInterval); _previewInterval = null; }
   }
 
   // ─── Draw ────────────────────────────────────────────────
@@ -398,6 +419,7 @@
 
     const batchCount = Math.max(1, parseInt(document.getElementById('batchCount').value) || 1);
 
+    stopNamePreview();
     _isDrawing = true;
     _isAnimating = true;
     document.getElementById('statusMsg').textContent = '';
@@ -460,12 +482,8 @@
       }
     }
 
-    // 緩速階段：逐步加大間隔，最後停在目標文字
+    // 緩速階段：逐步加大間隔，最後停在中獎者姓名（或最後一個隨機名字）
     function slowDown(results) {
-      const targetName = results.length === 1
-        ? results[0].participant_name
-        : `🎉 抽出 ${results.length} 位`;
-
       const steps = [80, 120, 170, 220, 270, 320, 360, 400];
       let step = 0;
 
@@ -474,8 +492,8 @@
           marqueeText.textContent = nextName();
           _marqueeInterval = setTimeout(slowTick, steps[step++]);
         } else {
-          // 停在目標
-          marqueeText.textContent = targetName;
+          // 單人：停在中獎者姓名；批次：停在最後一個隨機名字
+          if (results.length === 1) marqueeText.textContent = results[0].participant_name;
           setTimeout(() => onDone(results), 450);
         }
       }
