@@ -97,6 +97,37 @@
     .marquee-wrap.idle #marqueeText { color: rgba(255,215,0,.3); }
     #statusMsg { text-align: center; font-size: .95rem; color: rgba(255,228,181,.7); min-height: 1.4em; }
 
+    /* ─── Slot Machine ─── */
+    #slotDisplay {
+      display: none; align-items: center; justify-content: center;
+      gap: clamp(.6rem, 2vw, 1.5rem); pointer-events: none;
+    }
+    #slotDisplay.active { display: flex; }
+    .slot-reel {
+      width: clamp(80px, 13vw, 150px); height: clamp(90px, 15vw, 170px);
+      border: 3px solid rgba(255,215,0,.5); border-radius: 14px;
+      background: rgba(0,0,0,.45);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 12px rgba(255,215,0,.2), inset 0 0 12px rgba(0,0,0,.5);
+      transition: box-shadow .3s, border-color .3s;
+    }
+    .slot-reel.landed {
+      border-color: var(--gold);
+      box-shadow: 0 0 40px rgba(255,215,0,.7), inset 0 0 12px rgba(255,215,0,.1);
+    }
+    .slot-sym {
+      font-size: clamp(2.5rem, 7vw, 6rem); font-weight: 900; line-height: 1;
+      color: var(--gold); text-shadow: 0 0 20px rgba(255,215,0,.8);
+      user-select: none; display: block;
+    }
+    .slot-reel.landed .slot-sym {
+      animation: slotBounce .4s cubic-bezier(.34,1.56,.64,1) forwards;
+    }
+    @keyframes slotBounce {
+      0%   { transform: scale(1.5); }
+      100% { transform: scale(1); }
+    }
+
     /* ─── Right: Results list ─── */
     .results-panel {
       background: rgba(255,255,255,.04); border: 1px solid rgba(255,215,0,.15);
@@ -241,6 +272,11 @@
       </div>
       <div class="marquee-wrap idle" id="marqueeWrap" onclick="startDraw()">
         <div id="marqueeText">請選擇獎項</div>
+        <div id="slotDisplay">
+          <div class="slot-reel" id="slotReel1"><span class="slot-sym" id="slotSym1">❓</span></div>
+          <div class="slot-reel" id="slotReel2"><span class="slot-sym" id="slotSym2">❓</span></div>
+          <div class="slot-reel" id="slotReel3"><span class="slot-sym" id="slotSym3">❓</span></div>
+        </div>
       </div>
       <div id="statusMsg"></div>
       <div class="batch-row">
@@ -400,13 +436,11 @@
 
     _isDrawing = true;
     _isAnimating = true;
-    document.getElementById('statusMsg').textContent =
-      batchCount > 1 ? `批次抽獎（${batchCount} 人）中…` : '';
+    document.getElementById('statusMsg').textContent = '';
     wrap.classList.remove('idle');
     wrap.classList.add('drawing');
 
-    // 立即開始動畫，同步觸發所有 DB 抽獎（單人或批次統一處理）
-    const namePool = shuffle(_eligible.map(p => p.name));
+    // 所有 DB 抽獎在背景同步執行
     const drawPromise = (async () => {
       const results = [];
       for (let i = 0; i < batchCount; i++) {
@@ -416,11 +450,12 @@
       return results;
     })();
 
-    runMarqueeWithPromise(namePool, drawPromise, (results) => {
+    const finish = (results) => {
       document.getElementById('statusMsg').textContent = '';
       if (!results || results.length === 0) {
         _isDrawing = false; _isAnimating = false;
         wrap.classList.remove('drawing');
+        resetSlotDisplay();
         document.getElementById('statusMsg').textContent = '抽獎失敗，請重試';
         setMarqueeIdle('抽獎失敗');
         return;
@@ -428,7 +463,86 @@
       _batchResults = results;
       if (results.length === 1) showSingleOverlay(results[0]);
       else showBatchOverlay(results);
-    });
+    };
+
+    if (batchCount === 1) {
+      // 單人：滾名字
+      const namePool = shuffle(_eligible.map(p => p.name));
+      runMarqueeWithPromise(namePool, drawPromise, finish);
+    } else {
+      // 批次：777 老虎機動畫
+      runSlotAnimation(drawPromise, finish);
+    }
+  }
+
+  // ── 老虎機動畫（批次用）──────────────────────────────────
+  function runSlotAnimation(drawPromise, onDone) {
+    const SYMBOLS = ['❓', '⭐', '7', '♦', '♣', '♥', '♠', '💎'];
+
+    const marqueeText = document.getElementById('marqueeText');
+    const slotDisplay = document.getElementById('slotDisplay');
+    const reelEls = [
+      document.getElementById('slotReel1'),
+      document.getElementById('slotReel2'),
+      document.getElementById('slotReel3')
+    ];
+    const symEls = [
+      document.getElementById('slotSym1'),
+      document.getElementById('slotSym2'),
+      document.getElementById('slotSym3')
+    ];
+
+    // Init
+    marqueeText.style.display = 'none';
+    reelEls.forEach(r => r.classList.remove('landed'));
+    symEls.forEach(s => { s.textContent = '❓'; });
+    slotDisplay.classList.add('active');
+
+    let drawResults = undefined;
+    drawPromise
+      .then(r => { drawResults = Array.isArray(r) ? r : (r ? [r] : []); })
+      .catch(() => { drawResults = []; });
+
+    // 三個轉輪以略微不同速度滾動
+    const reelTimers = symEls.map((sym, i) =>
+      setInterval(() => {
+        sym.textContent = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+      }, 55 + i * 15)
+    );
+
+    // 等待 DB + 最少 1500ms
+    let elapsed = 0;
+    if (_marqueeInterval) clearInterval(_marqueeInterval);
+    _marqueeInterval = setInterval(() => {
+      elapsed += 80;
+      if (elapsed >= 1500 && drawResults !== undefined) {
+        clearInterval(_marqueeInterval);
+        // 依序停止三個轉輪，每格間隔 400ms
+        [0, 1, 2].forEach(i => {
+          setTimeout(() => {
+            clearInterval(reelTimers[i]);
+            symEls[i].textContent = '7';
+            reelEls[i].classList.add('landed');
+
+            if (i === 2) {
+              // 最後一格停定後，稍待再切換到批次 overlay
+              setTimeout(() => {
+                resetSlotDisplay();
+                onDone(drawResults);
+              }, 700);
+            }
+          }, i * 420);
+        });
+      }
+    }, 80);
+  }
+
+  function resetSlotDisplay() {
+    document.getElementById('marqueeText').style.display = '';
+    document.getElementById('slotDisplay').classList.remove('active');
+    ['slotReel1','slotReel2','slotReel3'].forEach(id =>
+      document.getElementById(id).classList.remove('landed')
+    );
   }
 
   // 立即開始滾動，DB 結果回來後減速收尾（單人或批次通用）
@@ -555,6 +669,7 @@
     _batchAddActive = false;
     document.getElementById('overlay').classList.remove('show', 'batch');
     document.getElementById('marqueeWrap').classList.remove('drawing');
+    resetSlotDisplay();
     if (_overlayTimer) clearTimeout(_overlayTimer);
     _isAnimating = false;
     _isDrawing = false;
