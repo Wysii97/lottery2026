@@ -466,17 +466,30 @@
     };
 
     if (batchCount === 1) {
-      // 單人：滾名字
-      const namePool = shuffle(_eligible.map(p => p.name));
-      runMarqueeWithPromise(namePool, drawPromise, finish);
+      // 單人：老虎機，停在中獎者名字各字
+      runSlotAnimation(drawPromise,
+        (results) => getNameSymbols(results[0]?.participant_name || ''),
+        finish);
     } else {
-      // 批次：777 老虎機動畫
-      runSlotAnimation(drawPromise, finish);
+      // 批次：老虎機，停在 7 7 7
+      runSlotAnimation(drawPromise,
+        () => ['7', '7', '7'],
+        finish);
     }
   }
 
-  // ── 老虎機動畫（批次用）──────────────────────────────────
-  function runSlotAnimation(drawPromise, onDone) {
+  // 將姓名拆成三格：前兩字各一格，第三格放剩餘字（不足補 ★）
+  function getNameSymbols(name) {
+    const chars = [...name]; // 正確處理 Unicode 字元
+    if (chars.length === 0) return ['?', '?', '?'];
+    if (chars.length === 1) return [chars[0], '★', '★'];
+    if (chars.length === 2) return [chars[0], chars[1], '★'];
+    return [chars[0], chars[1], chars.slice(2).join('')];
+  }
+
+  // ── 老虎機動畫（單人與批次通用）─────────────────────────
+  // getFinalSymbols(results) → ['字1','字2','字3']
+  function runSlotAnimation(drawPromise, getFinalSymbols, onDone) {
     const SYMBOLS = ['❓', '⭐', '7', '♦', '♣', '♥', '♠', '💎'];
 
     const marqueeText = document.getElementById('marqueeText');
@@ -495,7 +508,7 @@
     // Init
     marqueeText.style.display = 'none';
     reelEls.forEach(r => r.classList.remove('landed'));
-    symEls.forEach(s => { s.textContent = '❓'; });
+    symEls.forEach(s => { s.textContent = '❓'; s.style.fontSize = ''; });
     slotDisplay.classList.add('active');
 
     let drawResults = undefined;
@@ -503,7 +516,7 @@
       .then(r => { drawResults = Array.isArray(r) ? r : (r ? [r] : []); })
       .catch(() => { drawResults = []; });
 
-    // 三個轉輪以略微不同速度滾動
+    // 三個轉輪略微不同速度
     const reelTimers = symEls.map((sym, i) =>
       setInterval(() => {
         sym.textContent = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
@@ -517,15 +530,23 @@
       elapsed += 80;
       if (elapsed >= 1500 && drawResults !== undefined) {
         clearInterval(_marqueeInterval);
-        // 依序停止三個轉輪，每格間隔 400ms
+        const finals = getFinalSymbols(drawResults);
+
+        // 依序停止三個轉輪，每格間隔 420ms
         [0, 1, 2].forEach(i => {
           setTimeout(() => {
             clearInterval(reelTimers[i]);
-            symEls[i].textContent = '7';
+            symEls[i].textContent = finals[i] || '★';
+            // 第三格若超過一個字，自動縮小字型
+            if ((finals[i] || '').length > 1) {
+              symEls[i].style.fontSize =
+                finals[i].length >= 3
+                  ? 'clamp(1.1rem, 2.8vw, 2.6rem)'
+                  : 'clamp(1.6rem, 3.8vw, 3.5rem)';
+            }
             reelEls[i].classList.add('landed');
 
             if (i === 2) {
-              // 最後一格停定後，稍待再切換到批次 overlay
               setTimeout(() => {
                 resetSlotDisplay();
                 onDone(drawResults);
@@ -538,70 +559,15 @@
   }
 
   function resetSlotDisplay() {
-    document.getElementById('marqueeText').style.display = '';
+    const marqueeText = document.getElementById('marqueeText');
+    marqueeText.style.display = '';
     document.getElementById('slotDisplay').classList.remove('active');
     ['slotReel1','slotReel2','slotReel3'].forEach(id =>
       document.getElementById(id).classList.remove('landed')
     );
-  }
-
-  // 立即開始滾動，DB 結果回來後減速收尾（單人或批次通用）
-  function runMarqueeWithPromise(namePool, drawPromise, onDone) {
-    const el = document.getElementById('marqueeText');
-    if (_marqueeInterval) clearInterval(_marqueeInterval);
-
-    let pool = [...namePool];
-    let poolIdx = 0;
-    let intervalMs = 50;
-    let elapsed = 0;
-    let drawResults = undefined; // undefined=pending
-    let revealing = false;
-
-    drawPromise
-      .then(r => { drawResults = Array.isArray(r) ? r : (r ? [r] : []); })
-      .catch(() => { drawResults = []; });
-
-    function nextName() {
-      if (poolIdx >= pool.length) { pool = shuffle([...namePool]); poolIdx = 0; }
-      return pool[poolIdx++];
-    }
-
-    function tick() {
-      el.textContent = nextName();
-      elapsed += intervalMs;
-
-      // 至少滾 1500ms 且 DB 已全部回傳 → 減速收尾
-      if (!revealing && elapsed >= 1500 && drawResults !== undefined) {
-        revealing = true;
-        clearInterval(_marqueeInterval);
-        const last = drawResults.length > 0 ? drawResults[drawResults.length - 1] : null;
-        slowReveal(nextName, last, el, () => onDone(drawResults));
-        return;
-      }
-      // DB 還沒回來但已超 1500ms → 稍降速，保持視覺等待感
-      if (!revealing && elapsed > 1500 && drawResults === undefined && intervalMs < 150) {
-        intervalMs = 150;
-        clearInterval(_marqueeInterval);
-        _marqueeInterval = setInterval(tick, intervalMs);
-      }
-    }
-
-    _marqueeInterval = setInterval(tick, intervalMs);
-  }
-
-  function slowReveal(nextName, lastResult, el, onDone) {
-    const steps = [120, 180, 260, 360, 460];
-    let i = 0;
-    function step() {
-      if (i < steps.length) {
-        el.textContent = nextName();
-        setTimeout(step, steps[i++]);
-      } else {
-        el.textContent = lastResult ? lastResult.participant_name : '—';
-        setTimeout(onDone, 350);
-      }
-    }
-    step();
+    ['slotSym1','slotSym2','slotSym3'].forEach(id => {
+      document.getElementById(id).style.fontSize = '';
+    });
   }
 
   // ─── Single Overlay ───────────────────────────────────────
